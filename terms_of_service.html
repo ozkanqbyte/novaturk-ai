@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kullanım Koşulları - AiPremium Hesap Makinesi</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.8;
+            color: #1a1a2e;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 50%, #ff6b9d 100%);
+            background-attachment: fixed;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+            padding: 50px;
+            border-radius: 30px;
+            box-shadow: 
+                0 30px 90px rgba(0, 0, 0, 0.3),
+                0 0 0 1px rgba(255, 255, 255, 0.5);
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding-bottom: 30px;
+            border-bottom: 3px solid #f0f0f5;
+        }
+        
+        .header h1 {
+            font-size: 42px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 15px;
+            letter-spacing: -0.5px;
+        }
+        
+        .header .subtitle {
+            font-size: 18px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .date {
+            display: inline-block;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            padding: 10px 25px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 5px;
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);
+        }
+        
+        h2 {
+            color: #f5576c;
+            font-size: 28px;
+            font-weight: 700;
+            margin: 40px 0 20px 0;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #f5576c;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        h3 {
+            color: #f093fb;
+            font-size: 22px;
+            font-weight: 600;
+            margin: 30px 0 15px 0;
+            padding-left: 15px;
+            border-left: 4px solid #f093fb;
+        }
+        
+        p {
+            margin: 15px 0;
+            font-size: 16px;
+            color: #444;
+            line-height: 1.8;
+        }
+        
+        ul {
+            margin: 20px 0;
+            padding-left: 0;
+        }
+        
+        li {
+            list-style: none;
+            padding: 12px 20px 12px 50px;
+            margin: 10px 0;
+            background: #fff5f8;
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.3s ease;
+            font-size: 15px;
+        }
+        
+        li:hover {
+            background: #ffe8f0;
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(245, 87, 108, 0.1);
+        }
+        
+        li::before {
+            content: '✓';
+            position: absolute;
+            left: 18px;
+            color: #f5576c;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        .highlight-box {
+            background: linear-gradient(135deg, #fff5f8 0%, #ffe8f0 100%);
+            padding: 30px;
+            border-radius: 20px;
+            border-left: 5px solid #f5576c;
+            margin: 30px 0;
+            box-shadow: 0 10px 30px rgba(245, 87, 108, 0.1);
+        }
+        
+        .highlight-box strong {
+            color: #f5576c;
+            font-size: 18px;
+            display: block;
+            margin-bottom: 15px;
+        }
+        
+        .warning-box {
+            background: linear-gradient(135deg, #fff9e6 0%, #fff5e6 100%);
+            padding: 30px;
+            border-radius: 20px;
+            border-left: 5px solid #ffc107;
+            margin: 30px 0;
+            box-shadow: 0 10px 30px rgba(255, 193, 7, 0.1);
+        }
+        
+        .warning-box strong {
+            color: #ff9800;
+            font-size: 18px;
+            display: block;
+            margin-bottom: 15px;
+        }
+        
+        .info-card {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+            margin: 30px 0;
+        }
+        
+        .info-card .info-row {
+            display: flex;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid #f0f0f5;
+        }
+        
+        .info-card .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-card .info-label {
+            font-weight: 600;
+            color: #f5576c;
+            min-width: 180px;
+            font-size: 15px;
+        }
+        
+        .info-card .info-value {
+            color: #444;
+            font-size: 15px;
+        }
+        
+        .pricing-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+        }
+        
+        .pricing-table th {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            color: white;
+            padding: 18px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        
+        .pricing-table td {
+            padding: 18px;
+            border-bottom: 1px solid #f0f0f5;
+            font-size: 15px;
+        }
+        
+        .pricing-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .pricing-table tr:hover {
+            background: #fff5f8;
+        }
+        
+        .contact-box {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            padding: 40px;
+            border-radius: 25px;
+            color: white;
+            margin: 40px 0;
+            box-shadow: 0 20px 60px rgba(245, 87, 108, 0.3);
+            text-align: center;
+        }
+        
+        .contact-box h2 {
+            color: white;
+            border-bottom: 3px solid rgba(255, 255, 255, 0.3);
+            padding-bottom: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .contact-box a {
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            display: inline-block;
+            padding: 12px 30px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50px;
+            margin: 8px 5px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .contact-box a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.2);
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 60px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f5;
+            color: #888;
+            font-size: 14px;
+        }
+        
+        .footer strong {
+            color: #f5576c;
+            font-size: 16px;
+        }
+        
+        .developer-card {
+            background: linear-gradient(135deg, #f5576c, #f093fb);
+            color: white;
+            padding: 30px;
+            border-radius: 20px;
+            margin: 30px 0;
+            box-shadow: 0 15px 50px rgba(245, 87, 108, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 25px;
+        }
+        
+        .developer-card .avatar {
+            width: 80px;
+            height: 80px;
+            background: white;
+            color: #f5576c;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .developer-card .info h3 {
+            color: white;
+            font-size: 24px;
+            margin: 0 0 5px 0;
+            padding: 0;
+            border: none;
+        }
+        
+        .developer-card .info .company {
+            opacity: 0.9;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+        
+        .developer-card .info .role {
+            opacity: 0.7;
+            font-size: 14px;
+        }
+        
+        .acceptance-box {
+            background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+            padding: 30px;
+            border-radius: 20px;
+            border-left: 5px solid #4caf50;
+            margin: 30px 0;
+            box-shadow: 0 10px 30px rgba(76, 175, 80, 0.1);
+        }
+        
+        .acceptance-box strong {
+            color: #2e7d32;
+            font-size: 18px;
+            display: block;
+            margin-bottom: 15px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+            
+            .header h1 {
+                font-size: 32px;
+            }
+            
+            h2 {
+                font-size: 24px;
+            }
+            
+            .developer-card {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .pricing-table {
+                font-size: 14px;
+            }
+            
+            .info-card .info-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            
+            .info-card .info-label {
+                margin-bottom: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📋 Kullanım Koşulları</h1>
+            <p class="subtitle">AiPremium Hesap Makinesi</p>
+            <div style="margin-top: 15px;">
+                <span class="date">📅 Son Güncelleme: 1 Ocak 2025</span>
+                <span class="date">✅ Yürürlük Tarihi: 1 Ocak 2025</span>
+            </div>
+        </div>
+        
+        <div class="highlight-box">
+            <strong>⚖️ Önemli Bilgilendirme</strong>
+            <p><strong>AiPremium Hesap Makinesi</strong> uygulamasını kullanarak, aşağıdaki kullanım koşullarını kabul etmiş olursunuz. Lütfen bu koşulları dikkatlice okuyun.</p>
+        </div>
+
+        <div class="developer-card">
+            <div class="avatar">ÖA</div>
+            <div class="info">
+                <h3>Özkan Akçay</h3>
+                <div class="company">QByte Development</div>
+                <div class="role">Mobile App Developer & AI Enthusiast</div>
+            </div>
+        </div>
+
+        <div class="info-card">
+            <h2>📱 1. Genel Bilgiler</h2>
+            <div class="info-row">
+                <span class="info-label">📱 Uygulama Adı:</span>
+                <span class="info-value">AiPremium Hesap Makinesi</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">👨‍💻 Geliştirici:</span>
+                <span class="info-value">Özkan Akçay</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🏢 Şirket:</span>
+                <span class="info-value">QByte Development</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">📧 İletişim:</span>
+                <span class="info-value">ozkanqbyte@gmail.com</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🌍 Platform:</span>
+                <span class="info-value">Android & iOS</span>
+            </div>
+        </div>
+
+        <h2>2️⃣ Hizmet Tanımı ve Özellikler</h2>
+        <p>AiPremium Hesap Makinesi, yapay zeka destekli modern bir hesaplama platformudur ve şu özellikleri sunar:</p>
+        
+        <ul>
+            <li><strong>🔢 Temel & Bilimsel Hesap Makinesi:</strong> Güçlü ve kullanıcı dostu hesaplama motoru</li>
+            <li><strong>📊 40+ Özel Hesaplayıcı:</strong> Finans, Sağlık, İnşaat, Bilim, İş, Günlük, Eğitim kategorileri</li>
+            <li><strong>🔄 Birim Dönüştürücüler:</strong> 50+ farklı birim dönüşümü</li>
+            <li><strong>🎤 Sesli Komut Tanıma:</strong> AI destekli, offline çalışan ses tanıma</li>
+            <li><strong>📸 OCR - Fotoğraftan Matematik:</strong> Google ML Kit ile %95+ doğruluk</li>
+            <li><strong>✍️ El Yazısı Tanıma:</strong> Akıllı dijital mürekkep tanıma sistemi</li>
+            <li><strong>📜 Akıllı Geçmiş:</strong> Gelişmiş filtreleme ve arama özellikleri</li>
+            <li><strong>🤖 Yapay Zeka Asistanı:</strong> Karmaşık problemler için AI desteği</li>
+        </ul>
+
+        <h2>3️⃣ Kullanıcı Sorumlulukları</h2>
+        
+        <h3>3.1 ✅ Kabul Edilen Kullanım</h3>
+        <ul>
+            <li>Kişisel matematiksel hesaplamalar ve problemler</li>
+            <li>Eğitim, öğrenme ve akademik çalışmalar</li>
+            <li>İş, ticaret ve profesyonel hesaplamalar</li>
+            <li>Günlük yaşam hesaplama ihtiyaçları</li>
+            <li>Araştırma ve geliştirme projeleri</li>
+        </ul>
+
+        <h3>3.2 ❌ Yasak Kullanımlar</h3>
+        <div class="warning-box">
+            <strong>⚠️ Aşağıdaki kullanımlar kesinlikle yasaktır:</strong>
+            <ul>
+                <li>Uygulamayı tersine mühendislik (reverse engineering) ile incelemek</li>
+                <li>Uygulamanın kaynak kodunu kopyalamak, çalmak veya değiştirmek</li>
+                <li>Uygulamayı yeniden dağıtmak, satmak veya kiraya vermek</li>
+                <li>Uygulamanın güvenlik sistemlerini aşmaya veya bypass etmeye çalışmak</li>
+                <li>Botlar, otomatik sistemler veya scraping araçları ile kullanmak</li>
+                <li>Zararlı içerik, spam veya kötü amaçlı kullanım</li>
+                <li>Yasal olmayan faaliyetler için kullanmak</li>
+            </ul>
+        </div>
+
+        <h2>4️⃣ Hesap ve Premium Üyelik</h2>
+        
+        <h3>4.1 🆓 Ücretsiz Versiyon</h3>
+        <ul>
+            <li>Temel hesap makinesi özellikleri (tam erişim)</li>
+            <li>Sınırlı AI kullanımı (günde 5 sorgu)</li>
+            <li>Sınırlı geçmiş (son 20 hesaplama)</li>
+            <li>Reklamlar gösterilir (AdMob)</li>
+            <li>Temel dönüştürücüler</li>
+        </ul>
+
+        <h3>4.2 💎 Premium Üyelik Paketleri</h3>
+        <table class="pricing-table">
+            <thead>
+                <tr>
+                    <th>📦 Paket</th>
+                    <th>💰 Fiyat</th>
+                    <th>⏰ Süre</th>
+                    <th>💾 Tasarruf</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Aylık Premium</strong></td>
+                    <td>50,00 ₺</td>
+                    <td>1 Ay</td>
+                    <td>-</td>
+                </tr>
+                <tr>
+                    <td><strong>Ömür Boyu Premium</strong> 🌟</td>
+                    <td>399,00 ₺</td>
+                    <td>Sonsuza Kadar</td>
+                    <td>%88 İndirim</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>4.3 ⭐ Premium Özellikler</h3>
+        <div class="highlight-box">
+            <strong>Premium üyelikle kazanırsınız:</strong>
+            <ul>
+                <li><strong>🚫 Reklamsız Deneyim:</strong> Hiçbir reklam gösterilmez</li>
+                <li><strong>🔢 40+ Özel Hesaplayıcı:</strong> Tüm hesaplayıcılara sınırsız erişim</li>
+                <li><strong>🤖 Sınırsız AI:</strong> Yapay zeka özelliklerinde limit yok</li>
+                <li><strong>📊 Sınırsız Geçmiş:</strong> Tüm hesaplamalarınızı saklayın</li>
+                <li><strong>🎨 Premium Temalar:</strong> Özel renk paletleri ve stiller</li>
+                <li><strong>☁️ Bulut Yedekleme:</strong> Verilerinizi güvenle saklayın</li>
+                <li><strong>📱 Öncelikli Destek:</strong> 24 saat içinde yanıt garantisi</li>
+                <li><strong>🎁 Erken Erişim:</strong> Yeni özellikleri ilk siz kullanın</li>
+            </ul>
+        </div>
+
+        <h2>5️⃣ Ödeme ve İptal Politikası</h2>
+        
+        <h3>5.1 💳 Ödeme Yöntemleri</h3>
+        <ul>
+            <li>Ödemeler <strong>Google Play Store</strong> veya <strong>Apple App Store</strong> üzerinden yapılır</li>
+            <li>Fiyatlar <strong>Türk Lirası (₺)</strong> cinsindendir</li>
+            <li>Kredi kartı, banka kartı ve dijital cüzdanlar kabul edilir</li>
+            <li>Aylık abonelikler otomatik olarak yenilenir</li>
+            <li>Ömür boyu paket tek seferlik ödemedir (yenilenmez)</li>
+        </ul>
+
+        <h3>5.2 🔄 İptal ve İade</h3>
+        <ul>
+            <li>Abonelikleri istediğiniz zaman iptal edebilirsiniz</li>
+            <li>İptal sonrası, mevcut dönem sonuna kadar premium erişiminiz devam eder</li>
+            <li>İade talepleri Google Play / Apple Store politikalarına tabidir</li>
+            <li>Ömür boyu satın alımlar için <strong>48 saat</strong> içinde iade hakkı vardır</li>
+            <li>Teknik problemler durumunda tam iade yapılır</li>
+        </ul>
+
+        <h3>5.3 ⚠️ Otomatik Yenileme</h3>
+        <div class="warning-box">
+            <strong>Önemli Bilgilendirme:</strong>
+            <p>Aylık abonelikler otomatik olarak yenilenir. İptal etmezseniz, abonelik dönemi bitiminde hesabınızdan otomatik olarak ücret kesilir.</p>
+            <p><strong>İptal için:</strong> Google Play Store veya Apple App Store ayarlarından "Abonelikler" bölümüne giderek iptal edin. İptal işlemi en az 24 saat önceden yapılmalıdır.</p>
+        </div>
+
+        <h2>6️⃣ Fikri Mülkiyet Hakları</h2>
+        <ul>
+            <li>© 2025 <strong>Özkan Akçay</strong> - QByte Development - Tüm hakları saklıdır</li>
+            <li>Uygulama, logo, tasarım, kod ve tüm içerik telif haklarıyla korunmaktadır</li>
+            <li>İzinsiz kullanım, kopyalama, değiştirme veya dağıtım yasaktır</li>
+            <li>Ticari marka ve patent hakları Özkan Akçay'a aittir</li>
+            <li>Kullanıcılar yalnızca kişisel, ticari olmayan kullanım hakkına sahiptir</li>
+        </ul>
+
+        <h2>7️⃣ Hizmet Değişiklikleri ve Güncellemeler</h2>
+        <p>Özkan Akçay / QByte Development şu haklara sahiptir:</p>
+        <ul>
+            <li>Uygulamayı güncelleme, geliştirme ve optimize etme</li>
+            <li>Yeni özellikler ekleme veya mevcut özellikleri kaldırma/değiştirme</li>
+            <li>Fiyatları değiştirme (mevcut aboneler etkilenmez)</li>
+            <li>Hizmeti geçici veya kalıcı olarak durdurma</li>
+            <li>Kullanım koşullarını güncelleme (önemli değişiklikler bildirilir)</li>
+        </ul>
+
+        <h2>8️⃣ Sorumluluk Reddi ve Sınırlamalar</h2>
+        <div class="warning-box">
+            <strong>⚠️ Önemli Yasal Bildirim:</strong>
+            <ul>
+                <li>Uygulama <strong>"olduğu gibi"</strong> sunulur, hiçbir açık veya zımni garanti verilmez</li>
+                <li>Hesaplama sonuçlarının doğruluğu ve kullanımı tamamen kullanıcının sorumluluğundadır</li>
+                <li>Kritik finansal, sağlık veya yasal kararlar için profesyonel danışmanlık alınmalıdır</li>
+                <li>Finansal kayıplar, sağlık sorunları veya diğer zararlardan geliştirici sorumlu değildir</li>
+                <li>Uygulama kesintisiz veya hatasız çalışma garantisi vermez</li>
+                <li>Üçüncü taraf hizmetlerin (Google, Apple) kesintilerinden sorumlu değiliz</li>
+            </ul>
+        </div>
+
+        <h2>9️⃣ Veri Güvenliği ve Gizlilik</h2>
+        <p>Kullanıcı verileri ve gizliliği konusunda taahhütlerimiz:</p>
+        <ul>
+            <li>🔒 Tüm veriler yerel olarak cihazda şifrelenerek saklanır</li>
+            <li>🚫 Kişisel bilgiler üçüncü taraflarla paylaşılmaz veya satılmaz</li>
+            <li>🛡️ KVKK (Türkiye) ve GDPR (AB) uyumlu veri işleme</li>
+            <li>🔐 SSL/TLS şifreleme ile güvenli veri aktarımı</li>
+            <li>👤 Kullanıcı kontrolü: Verilerinizi istediğiniz zaman silebilirsiniz</li>
+        </ul>
+        <p>Detaylı bilgi için <strong>Gizlilik Politikası</strong>'nı okuyun.</p>
+
+        <h2>🔟 Yaş Sınırı ve Ebeveyn Kontrolü</h2>
+        <p>Bu uygulama <strong>13 yaş ve üzeri</strong> kullanıcılar içindir. 13 yaşından küçük çocuklar ebeveyn izni ve gözetimi altında kullanabilir.</p>
+
+        <h2>1️⃣1️⃣ Kullanım Koşulları Değişiklikleri</h2>
+        <ul>
+            <li>Bu koşullar zaman zaman güncellenebilir ve revize edilebilir</li>
+            <li>Önemli değişiklikler uygulama içi bildirim ile duyurulur</li>
+            <li>E-posta ile premium kullanıcılara özel bilgilendirme yapılır</li>
+            <li>Güncellemelerden sonra uygulamayı kullanmaya devam ederseniz, yeni koşulları kabul etmiş sayılırsınız</li>
+            <li>Değişiklikleri kabul etmiyorsanız, uygulamayı kullanmayı bırakmalısınız</li>
+        </ul>
+
+        <h2>1️⃣2️⃣ Hesap Askıya Alma ve Sonlandırma</h2>
+        <p>Aşağıdaki durumlarda hesabınız askıya alınabilir veya sonlandırılabilir:</p>
+        <ul>
+            <li>Kullanım koşullarının ihlal edilmesi</li>
+            <li>Yasadışı faaliyetler veya dolandırıcılık girişimi</li>
+            <li>Uygulamanın güvenlik sistemlerine saldırı</li>
+            <li>Başkalarının haklarını ihlal etme</li>
+            <li>Otomatik sistemler veya botlar kullanımı</li>
+        </ul>
+
+        <div class="contact-box">
+            <h2>📞 Destek ve İletişim</h2>
+            <p style="font-size: 16px; margin-bottom: 25px;">Sorularınız, önerileriniz veya destek talepleriniz için:</p>
+            
+            <div style="margin: 20px 0;">
+                <a href="mailto:ozkanqbyte@gmail.com">📧 ozkanqbyte@gmail.com</a>
+            </div>
+            
+            <div style="margin-top: 30px; padding-top: 25px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <p><strong>👨‍💻 Geliştirici:</strong> Özkan Akçay</p>
+                <p><strong>🏢 Şirket:</strong> QByte Development</p>
+                <p><strong>⏱️ Destek Saatleri:</strong> 7/24 E-posta Desteği</p>
+                <p><strong>⏰ Yanıt Süresi:</strong> 48 saat (Ücretsiz) / 24 saat (Premium)</p>
+            </div>
+        </div>
+
+        <h2>1️⃣3️⃣ Uyuşmazlık Çözümü ve Yargı Yetkisi</h2>
+        <p>Bu kullanım koşullarından kaynaklanan uyuşmazlıklar:</p>
+        <ul>
+            <li>Öncelikle dostane görüşme ve arabuluculuk ile çözülmeye çalışılır</li>
+            <li><strong>Türkiye Cumhuriyeti</strong> yasalarına ve mevzuatına tabidir</li>
+            <li><strong>İstanbul</strong> mahkemeleri ve icra daireleri yetkilidir</li>
+            <li>Uluslararası kullanıcılar için yerel yasalar da uygulanabilir</li>
+        </ul>
+
+        <h2>1️⃣4️⃣ Kabul ve Onay</h2>
+        <div class="acceptance-box">
+            <strong>✅ Uygulamayı İndirerek ve Kullanarak:</strong>
+            <ul>
+                <li>Bu kullanım koşullarını okuduğunuzu ve anladığınızı</li>
+                <li>Tüm maddeleri kabul ettiğinizi</li>
+                <li>Yasal olarak bağlayıcı bir sözleşme imzaladığınızı</li>
+                <li>Bu koşullara uymayı taahhüt ettiğinizi</li>
+                <li>18 yaşından büyük olduğunuzu veya ebeveyn izni aldığınızı</li>
+            </ul>
+            <p style="margin-top: 20px; font-weight: 600; color: #2e7d32;">
+                <strong>ONAYLAMIŞ SAYILIRSINIZ.</strong>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p style="margin-bottom: 15px;">
+                © 2025 <strong>Özkan Akçay</strong> - QByte Development<br>
+                Tüm hakları saklıdır. All rights reserved.
+            </p>
+            <p style="font-size: 16px; color: #f5576c; font-weight: 600;">
+                AiPremium Hesap Makinesi 🤖
+            </p>
+            <p style="margin-top: 10px; font-size: 13px;">
+                Yapay Zeka Destekli Hesaplama • Versiyon 2.1.0<br>
+                Yürürlük Tarihi: 1 Ocak 2025
+            </p>
+        </div>
+    </div>
+</body>
+</html>
