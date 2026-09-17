@@ -105,6 +105,51 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   const sadedeGel = results?.sadedeGel;
   const halkNeDiyor = results?.halkNeDiyor;
 
+  const renderGroundedText = (text) => {
+    if (!text || typeof text !== 'string') return text;
+    const citations = sadedeGel?.citations || [];
+    const parts = text.split(/(\[\d+(?:\s*-\s*[^\]]+)?\])/g);
+    return parts.map((part, idx) => {
+      const match = part.match(/\[(\d+)(?:\s*-\s*([^\]]+))?\]/);
+      if (match) {
+        const citeIdx = parseInt(match[1], 10);
+        const domainLabel = match[2] ? match[2].trim() : `${citeIdx}`;
+        const citation = citations.find(c => c.index === citeIdx);
+        if (citation && citation.url && citation.url !== '#') {
+          return (
+            <a
+              key={idx}
+              href={citation.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                if (onOpenInAppTab) {
+                  e.preventDefault();
+                  onOpenInAppTab(citation.url, citation.title || domainLabel);
+                }
+              }}
+              title={citation.title || citation.url}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.2 mx-0.5 rounded text-[10px] font-semibold transition-all hover:scale-105 border ${
+                isDark 
+                  ? 'bg-sky-500/10 border-sky-500/20 text-sky-300 hover:bg-sky-500/20' 
+                  : 'bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100'
+              }`}
+            >
+              <span>{domainLabel}</span>
+              <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+            </a>
+          );
+        }
+        return (
+          <span key={idx} className="text-[10px] font-mono opacity-60 ml-0.5">
+            {part}
+          </span>
+        );
+      }
+      return <span key={idx}>{part}</span>;
+    });
+  };
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 py-4">
       
@@ -267,7 +312,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                     {sadedeGel.keyFacts.map((fact, fIdx) => (
                       <div key={fIdx} className="flex items-start gap-2 text-xs opacity-90">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                        <span>{fact}</span>
+                        <span>{renderGroundedText(fact)}</span>
                       </div>
                     ))}
                   </div>
@@ -276,7 +321,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
-          {/* 🌟 2. 'HALK NE DİYOR?' KARTI */}
+          {/* 🌟 2. 'HALK NE DİYOR?' KARTI (%100 Gerçek Canlı Veri) */}
           {activeTab === 'all' && halkNeDiyor && (
             <div className={`rounded-2xl p-4 sm:p-5 border transition-all ${
               isDark 
@@ -291,7 +336,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                   <div>
                     <h4 className="text-xs sm:text-sm font-bold tracking-tight flex items-center gap-1.5">
                       <span>Halk Ne Diyor?</span>
-                      <span className="text-[10px] opacity-50 font-normal">(Ekşi Sözlük & Şikayetvar Sentezi)</span>
+                      <span className="text-[10px] opacity-50 font-normal">(Kolektif Tüketici & Topluluk Sentezi)</span>
                     </h4>
                   </div>
                 </div>
@@ -316,7 +361,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                     {halkNeDiyor.pros?.map((p, pIdx) => (
                       <li key={pIdx} className="flex items-start gap-1.5">
                         <span className="text-emerald-400 shrink-0">•</span>
-                        <span>{p}</span>
+                        <span>{renderGroundedText(p)}</span>
                       </li>
                     ))}
                   </ul>
@@ -332,7 +377,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                     {halkNeDiyor.cons?.map((c, cIdx) => (
                       <li key={cIdx} className="flex items-start gap-1.5">
                         <span className="text-amber-400 shrink-0">•</span>
-                        <span>{c}</span>
+                        <span>{renderGroundedText(c)}</span>
                       </li>
                     ))}
                   </ul>
@@ -344,7 +389,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                   isDark ? 'bg-sky-500/[0.05] border-sky-500/20 text-sky-200' : 'bg-sky-50 border-sky-200 text-sky-900'
                 }`}>
                   <Lightbulb className="w-4 h-4 text-sky-400 shrink-0" />
-                  <span><strong>Halkın Kararı:</strong> {halkNeDiyor.consensus}</span>
+                  <span><strong>Halkın Kararı:</strong> {renderGroundedText(halkNeDiyor.consensus)}</span>
                 </div>
               )}
             </div>

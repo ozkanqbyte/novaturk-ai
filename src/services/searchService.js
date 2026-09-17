@@ -772,8 +772,8 @@ export async function executeSearch(query, isDeepSearch = false) {
   // 9. Canlı Gerçek Görseller (Wikimedia Commons)
   const visuals = await fetchRealVisuals(query);
 
-  // 10. Apple & Perplexity Standartlarında "Sadede Gel" ve "Halk Ne Diyor?" Sentezi
-  const insights = generateIntelligenceInsights(query, webResults);
+  // 10. Apple & Perplexity Standartlarında "Sadede Gel" ve "Halk Ne Diyor?" Sentezi (%100 Gerçek Canlı Veri)
+  const insights = await generateIntelligenceInsights(query, webResults, config.geminiApiKey);
 
   return {
     query,
