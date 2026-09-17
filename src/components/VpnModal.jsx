@@ -42,7 +42,8 @@ export default function VpnModal({ isOpen, onClose, onVpnChange, isDark = true }
     sound.playClick();
     setIsCheckingIp(true);
     try {
-      const res = await fetch('http://localhost:3001/api/vpn/my-ip');
+      const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
+      const res = await fetch(`${apiBase}/api/vpn/my-ip`);
       const data = await res.json();
       if (data && data.ip) {
         setTestedIp(data.ip);

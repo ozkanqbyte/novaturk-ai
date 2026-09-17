@@ -6,6 +6,8 @@ import { searchTurkishIndex } from './localIndexService.js';
 import { generateAgentSwarmData } from './agentService.js';
 import { resolveNavigationalIntent } from './navigationalService.js';
 
+export const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+
 export const getApiConfig = () => {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
     return {
@@ -164,7 +166,7 @@ async function fetchLiveBackendSearch(query) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`http://localhost:3001/api/live-web-search?q=${encodeURIComponent(query)}`, {
+    const res = await fetch(`${API_BASE}/api/live-web-search?q=${encodeURIComponent(query)}`, {
       signal: controller.signal
     });
     clearTimeout(timeoutId);
@@ -515,7 +517,7 @@ async function fetchRealVisuals(query) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2800);
-    const backendRes = await fetch(`http://localhost:3001/api/live-images?q=${encodeURIComponent(query)}`, {
+    const backendRes = await fetch(`${API_BASE}/api/live-images?q=${encodeURIComponent(query)}`, {
       signal: controller.signal
     });
     clearTimeout(timeoutId);

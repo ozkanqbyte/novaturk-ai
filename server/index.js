@@ -1,7 +1,14 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
 import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery } from './db.js';
 import { crawlSite } from './crawler.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../dist');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -722,6 +729,17 @@ app.get('/auth/google/start', (req, res) => {
 </body>
 </html>`);
 });
+
+// 🚀 Üretim Ortamında (Render vb.) Frontend'i (SPA) Otomatik Dağıt
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+      return res.sendFile(path.join(distPath, 'index.html'));
+    }
+    next();
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`====================================================`);
