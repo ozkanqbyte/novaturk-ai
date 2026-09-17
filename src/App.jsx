@@ -630,6 +630,7 @@ const isElectronApp = () => {
         isSearching={activeTab.isLoading}
         sadedeGel={activeTab.results?.sadedeGel}
         halkNeDiyor={activeTab.results?.halkNeDiyor}
+        comparison={activeTab.results?.comparison}
         isDark={isDark}
         currentTheme={currentTheme}
         onScrollToTop={() => {

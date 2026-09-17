@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import ReaderModeDrawer from './ReaderModeDrawer';
+import ComparisonMatrix from './ComparisonMatrix';
 import { sound } from '../services/soundService';
 import { unescapeHtml } from '../services/searchService';
 
@@ -712,6 +713,15 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         <div className={`space-y-4 transition-all duration-300 ${
           splitArticle ? 'lg:col-span-6' : 'lg:col-span-8'
         }`}>
+
+          {/* 🌟 0. KAFA KAFAYA KARŞILAŞTIRMA MATRİSİ (X VS Y) */}
+          {activeTab === 'all' && results?.comparison && (
+            <ComparisonMatrix 
+              comparison={results.comparison}
+              isDark={isDark}
+              currentTheme={currentTheme}
+            />
+          )}
 
           {/* 🌟 1. 'SADEDE GEL' KARTI */}
           {activeTab === 'all' && (

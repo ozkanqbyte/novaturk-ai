@@ -785,6 +785,7 @@ export async function executeSearch(query, isDeepSearch = false) {
     aiSummary,
     sadedeGel: insights.sadedeGel,
     halkNeDiyor: insights.halkNeDiyor,
+    comparison: insights.comparison,
     relatedQuestions,
     visuals,
     news: getNewsResults(query),

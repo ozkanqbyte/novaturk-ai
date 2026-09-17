@@ -10,6 +10,7 @@ export default function DynamicIsland({
   isSearching, 
   sadedeGel, 
   halkNeDiyor, 
+  comparison,
   isDark, 
   currentTheme,
   onScrollToTop
@@ -130,6 +131,11 @@ export default function DynamicIsland({
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" />
                 <span className="truncate max-w-[150px] font-medium">Taranıyor...</span>
               </div>
+            ) : comparison ? (
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                <span className="truncate max-w-[170px]">⚔️ {comparison.entityA.name} vs {comparison.entityB.name}</span>
+              </div>
             ) : query ? (
               <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
@@ -184,8 +190,12 @@ export default function DynamicIsland({
               </span>
             </div>
 
-            {/* Sadede Gel Önizleme / Hap Bilgi */}
-            {sadedeGel?.summary ? (
+            {/* Sadede Gel veya Kafa Kafaya Önizleme */}
+            {comparison ? (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 leading-relaxed">
+                <strong className="text-amber-300">⚔️ Kafa Kafaya Matris:</strong> {comparison.entityA.name} ({comparison.entityA.score}) vs {comparison.entityB.name} ({comparison.entityB.score}) • <strong>Öne Çıkan:</strong> {comparison.winnerName}
+              </div>
+            ) : sadedeGel?.summary ? (
               <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-slate-200 leading-relaxed line-clamp-3">
                 <strong className="text-sky-300">Sadede Gel Özeti:</strong> {sadedeGel.summary}
               </div>
