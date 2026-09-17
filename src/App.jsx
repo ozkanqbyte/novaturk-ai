@@ -20,7 +20,7 @@ import VpnModal from './components/VpnModal';
 import HistoryModal from './components/HistoryModal';
 import NovaTurkGoogleLogo from './components/NovaTurkGoogleLogo';
 import SponsoredShowcase from './components/SponsoredShowcase';
-import DealHunterWidget from './components/DealHunterWidget';
+import DynamicIsland from './components/DynamicIsland';
 import BusinessAdsModal from './components/BusinessAdsModal';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
@@ -622,6 +622,21 @@ const isElectronApp = () => {
     }`}>
       {/* 🌟 10 Canlı Cam & Gradient Arka Planı (Arama Sayfasında Görünür) */}
       {activeTab.type === 'search' && <AuroraBackground currentTheme={currentTheme} isDark={isDark} />}
+
+      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR & ETKİLEŞİMLİ) */}
+      <DynamicIsland 
+        query={activeTab.query}
+        isSearching={activeTab.isLoading}
+        sadedeGel={activeTab.results?.sadedeGel}
+        halkNeDiyor={activeTab.results?.halkNeDiyor}
+        isDark={isDark}
+        currentTheme={currentTheme}
+        onScrollToTop={() => {
+          const el = document.querySelector('.overflow-y-auto');
+          if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
 
       {/* 🌟 1. EN TEPEDE APPLE VISIONOS & CHROME TARZI TAM EKRAN SEKME ÇUBUĞU */}
       <BrowserTabBar 

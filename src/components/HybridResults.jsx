@@ -317,6 +317,46 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     }
   };
 
+  // 🌟 Dynamic Island Çift Yönlü İletişim Senkronizasyonu
+  const handleToggleSpeakRef = useRef();
+  handleToggleSpeakRef.current = handleToggleSpeak;
+
+  const handleDownloadNovaKartRef = useRef();
+  handleDownloadNovaKartRef.current = handleDownloadNovaKart;
+
+  useEffect(() => {
+    const onToggleSpeakCmd = () => handleToggleSpeakRef.current?.();
+    const onDownloadNovaKartCmd = () => handleDownloadNovaKartRef.current?.();
+    const onToggleBionicCmd = () => setBionicReading(prev => !prev);
+    const onToggleSplitCmd = () => {
+      setSplitArticle(prev => prev ? null : (webResults[0] || { title: query, snippet: rawSummary, url: '#' }));
+    };
+
+    window.addEventListener('novaturk:toggle-speak', onToggleSpeakCmd);
+    window.addEventListener('novaturk:download-novakart', onDownloadNovaKartCmd);
+    window.addEventListener('novaturk:toggle-bionic', onToggleBionicCmd);
+    window.addEventListener('novaturk:toggle-split', onToggleSplitCmd);
+
+    return () => {
+      window.removeEventListener('novaturk:toggle-speak', onToggleSpeakCmd);
+      window.removeEventListener('novaturk:download-novakart', onDownloadNovaKartCmd);
+      window.removeEventListener('novaturk:toggle-bionic', onToggleBionicCmd);
+      window.removeEventListener('novaturk:toggle-split', onToggleSplitCmd);
+    };
+  }, [query, rawSummary, webResults]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('novaturk:speaking-change', { detail: { isSpeaking } }));
+  }, [isSpeaking]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('novaturk:bionic-change', { detail: { isBionic: bionicReading } }));
+  }, [bionicReading]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('novaturk:split-change', { detail: { isSplit: !!splitArticle } }));
+  }, [splitArticle]);
+
   // 👁️ Biyonik Okuma
   const formatBionicText = (text) => {
     if (!bionicReading || !text) return text;
