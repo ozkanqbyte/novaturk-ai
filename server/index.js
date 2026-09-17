@@ -808,4 +808,30 @@ app.listen(PORT, () => {
       }
     }, 9 * 60 * 1000); // 9 dakikada bir (15 dk uyku sınırından önce)
   }
+
+  // 🕷️ Otonom Arka Plan Tarayıcısı (Türk Sitelerini 7/24 Sessizce İndeksler)
+  setTimeout(() => {
+    try {
+      const siteRows = db.prepare('SELECT url FROM sites LIMIT 30').all();
+      const urls = siteRows.map(s => s.url).filter(Boolean);
+      if (urls.length > 0) {
+        console.log('[NovaTurk Crawler] İlk otonom indeksleme döngüsü başlatılıyor...');
+        runBatchCrawler(urls, 25, 2);
+      }
+    } catch (e) {
+      console.warn('[NovaTurk Crawler] Başlatma hatası:', e.message);
+    }
+  }, 15000); // Sunucu açıldıktan 15 saniye sonra
+
+  // Her 30 dakikada bir yeni 25 sayfa tara
+  setInterval(() => {
+    try {
+      const siteRows = db.prepare('SELECT url FROM sites ORDER BY RANDOM() LIMIT 20').all();
+      const urls = siteRows.map(s => s.url).filter(Boolean);
+      if (urls.length > 0) {
+        console.log('[NovaTurk Crawler] Periyodik otonom indeksleme döngüsü devrede...');
+        runBatchCrawler(urls, 25, 2);
+      }
+    } catch (e) {}
+  }, 30 * 60 * 1000);
 });

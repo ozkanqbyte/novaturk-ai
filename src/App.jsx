@@ -229,7 +229,15 @@ export default function App() {
     });
   };
 
-  // 3. Arama Sonucunu Sekmede Aç (Google Chrome Gibi Aynı Sekmede ve Geçmişe Ekleyerek!)
+const isElectronApp = () => {
+  if (typeof window !== 'undefined') {
+    if (window.__IS_ELECTRON__ || window.electron) return true;
+    if (window.process && window.process.type === 'renderer') return true;
+  }
+  return typeof navigator !== 'undefined' && /electron/i.test(navigator.userAgent);
+};
+
+  // 3. Arama Sonucunu Sekmede Aç (Webde Yeni Sekme, Electron'da Dahili Tarayıcı)
   const handleOpenInAppTab = (result, forceNewTab = false) => {
     sound.playChime();
     let host = 'web';
@@ -239,6 +247,15 @@ export default function App() {
     // Ziyaret geçmişine ekle (Gizli modda ise ASLA kaydetme!)
     if (!activeTab.isIncognito) {
       addVisitHistory(result.link, cleanTitle);
+    }
+
+    // 🌐 Web Sürümünde (Vercel vb. normal tarayıcılarda):
+    // Claude, Google, GitHub vb. modern siteler güvenlik (X-Frame-Options) nedeniyle
+    // iframe içinde 'Bağlanmayı reddetti' hatası verir.
+    // Bu yüzden web tarayıcısında daima güvenle yeni sekmede açılır!
+    if (!isElectronApp()) {
+      window.open(result.link, '_blank', 'noopener,noreferrer');
+      return;
     }
 
     if (!forceNewTab) {

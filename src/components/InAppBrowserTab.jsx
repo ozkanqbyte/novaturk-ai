@@ -21,6 +21,7 @@ const isKnownBlockedDomain = (url) => {
   try {
     const host = new URL(url).hostname.toLowerCase();
     return [
+      'claude.ai', 'anthropic.com', 'perplexity.ai',
       'chatgpt.com', 'openai.com', 'google.com', 'google.com.tr',
       'github.com', 'twitter.com', 'x.com', 'youtube.com',
       'facebook.com', 'instagram.com', 'linkedin.com', 'netflix.com'
