@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "server": "node server/index.js",
-    "start": "node server/index.js",
+    "start": "node --experimental-sqlite server/index.js",
     "app": "electron electron/main.cjs",
     "electron": "electron electron/main.cjs",
     "build": "vite build",

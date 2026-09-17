@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,7 +11,99 @@ if (!fs.existsSync(DB_DIR)) {
 }
 
 const DB_PATH = path.join(DB_DIR, 'novaturk.db');
-export const db = new DatabaseSync(DB_PATH);
+
+class MemoryDbAdapter {
+  constructor() {
+    this.sites = [];
+    this.pages = [];
+    this.search_logs = [];
+    this.query_cache = new Map();
+  }
+  exec() {
+    return this;
+  }
+  prepare(sql) {
+    const s = sql.toLowerCase().trim();
+    const self = this;
+    return {
+      get(...params) {
+        if (s.includes('count(*) as count from sites')) return { count: self.sites.length };
+        if (s.includes('count(*) as count from pages')) return { count: self.pages.length };
+        if (s.includes('count(*) as count from search_logs')) return { count: self.search_logs.length };
+        if (s.includes('count(*) as count from query_cache')) return { count: self.query_cache.size };
+        if (s.includes('from query_cache where query_key = ?')) {
+          const item = self.query_cache.get(params[0]);
+          return item ? { results_json: item.results_json, cached_at: item.cached_at } : null;
+        }
+        return null;
+      },
+      all(...params) {
+        if (s.includes('from pages p left join sites s') || s.includes('like ?')) {
+          const q = (params[0] || '').replace(/%/g, '').toLowerCase();
+          return self.pages.filter(p => 
+            p.title.toLowerCase().includes(q) || 
+            (p.snippet && p.snippet.toLowerCase().includes(q)) || 
+            (p.content && p.content.toLowerCase().includes(q))
+          ).slice(0, 20);
+        }
+        if (s.includes('from search_logs')) return self.search_logs.slice(-50).reverse();
+        if (s.includes('from sites')) return self.sites.slice(0, 50);
+        if (s.includes('from pages')) return self.pages.slice(-50).reverse();
+        return [];
+      },
+      run(...params) {
+        if (s.includes('into sites')) {
+          self.sites.push({
+            id: self.sites.length + 1,
+            domain: params[0],
+            name: params[1],
+            category: params[2],
+            url: params[3],
+            description: params[4],
+            authority_score: params[5],
+            is_verified: 1
+          });
+        } else if (s.includes('into pages')) {
+          self.pages.push({
+            id: self.pages.length + 1,
+            site_id: params[0],
+            title: params[1],
+            url: params[2],
+            snippet: params[3],
+            content: params[4]
+          });
+        } else if (s.includes('into search_logs')) {
+          self.search_logs.push({
+            id: self.search_logs.length + 1,
+            query: params[0],
+            results_count: params[1],
+            execution_ms: params[2],
+            searched_at: new Date().toISOString()
+          });
+        } else if (s.includes('into query_cache')) {
+          self.query_cache.set(params[0], { results_json: params[1], cached_at: new Date().toISOString() });
+        }
+        return { changes: 1 };
+      }
+    };
+  }
+}
+
+let dbInstance;
+try {
+  const sqliteModule = await import('node:sqlite');
+  if (sqliteModule && sqliteModule.DatabaseSync) {
+    dbInstance = new sqliteModule.DatabaseSync(DB_PATH);
+    console.log('[NovaTurk DB] Native SQLite motoru aktif.');
+  } else {
+    throw new Error('DatabaseSync not found');
+  }
+} catch (err) {
+  console.log('[NovaTurk DB] SQLite modülü bulunamadı, bellek içi ultra hızlı depolama aktif edildi:', err.message);
+  dbInstance = new MemoryDbAdapter();
+}
+
+export const db = dbInstance;
 
 // Veritabanı Tablolarını Başlat
 export function initDatabase() {
