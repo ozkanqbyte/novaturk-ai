@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { TOP_TURKISH_PRESEEDED_QUERIES } from './popularQueries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -218,18 +219,60 @@ export function searchLocalDb(query) {
   return stmt.all(searchPattern, searchPattern, searchPattern);
 }
 
-// Akıllı Önbellek Okuma (Tier 1 - 1ms, 7 Günlük TTL)
+// ⚡ L1 Ultra Hızlı Bellek İçi Önbellek (0.001s / 1ms Gecikme)
+const MAX_L1_CAPACITY = 1000;
+const L1_CACHE = new Map();
+
+export const cacheStats = {
+  l1Hits: 0,
+  sqliteHits: 0,
+  misses: 0,
+  writes: 0
+};
+
+// Başlangıçta Popüler Türk Aramalarını L1 Önbelleğe Doldur
+for (const [key, results] of Object.entries(TOP_TURKISH_PRESEEDED_QUERIES)) {
+  L1_CACHE.set(key.toLowerCase().trim(), {
+    results,
+    cachedAt: Date.now()
+  });
+}
+
+// Akıllı Önbellek Okuma (Tier 1 - L1: 0.001ms, Tier 2 - SQLite: 1ms)
 export function getCachedQuery(query) {
   try {
     const key = query.trim().toLowerCase();
+
+    // 1. Aşama: L1 In-Memory Cache (0.001 ms)
+    if (L1_CACHE.has(key)) {
+      cacheStats.l1Hits++;
+      const item = L1_CACHE.get(key);
+      // LRU yeniden sıralama
+      L1_CACHE.delete(key);
+      L1_CACHE.set(key, item);
+      return item.results;
+    }
+
+    // 2. Aşama: SQLite / Kalıcı Cache (1-2 ms)
     const row = db.prepare(`
       SELECT results_json, cached_at 
       FROM query_cache 
       WHERE query_key = ? AND datetime(cached_at, '+7 days') > datetime('now')
     `).get(key);
+
     if (row && row.results_json) {
-      return JSON.parse(row.results_json);
+      cacheStats.sqliteHits++;
+      const parsed = JSON.parse(row.results_json);
+      // L1'e terfi ettir
+      if (L1_CACHE.size >= MAX_L1_CAPACITY) {
+        const oldestKey = L1_CACHE.keys().next().value;
+        L1_CACHE.delete(oldestKey);
+      }
+      L1_CACHE.set(key, { results: parsed, cachedAt: Date.now() });
+      return parsed;
     }
+
+    cacheStats.misses++;
   } catch (err) {
     console.warn('[Cache Read Error]:', err.message);
   }
@@ -241,6 +284,16 @@ export function saveCachedQuery(query, results) {
   try {
     if (!results || results.length === 0) return;
     const key = query.trim().toLowerCase();
+
+    // 1. L1 Belleğe Yaz
+    if (L1_CACHE.size >= MAX_L1_CAPACITY) {
+      const oldestKey = L1_CACHE.keys().next().value;
+      L1_CACHE.delete(oldestKey);
+    }
+    L1_CACHE.set(key, { results, cachedAt: Date.now() });
+    cacheStats.writes++;
+
+    // 2. SQLite / Kalıcı Depolamaya Yaz
     db.prepare(`
       INSERT OR REPLACE INTO query_cache (query_key, results_json, cached_at)
       VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -248,4 +301,17 @@ export function saveCachedQuery(query, results) {
   } catch (err) {
     console.warn('[Cache Write Error]:', err.message);
   }
+}
+
+export function getCacheStats() {
+  return {
+    l1Size: L1_CACHE.size,
+    maxCapacity: MAX_L1_CAPACITY,
+    l1Hits: cacheStats.l1Hits,
+    sqliteHits: cacheStats.sqliteHits,
+    totalHits: cacheStats.l1Hits + cacheStats.sqliteHits,
+    misses: cacheStats.misses,
+    writes: cacheStats.writes,
+    preseededTopics: Object.keys(TOP_TURKISH_PRESEEDED_QUERIES)
+  };
 }

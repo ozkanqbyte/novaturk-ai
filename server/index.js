@@ -3,8 +3,8 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery } from './db.js';
-import { crawlSite } from './crawler.js';
+import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats } from './db.js';
+import { crawlSite, runBatchCrawler, crawlerState } from './crawler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,6 +80,42 @@ app.get('/api/status', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ⚡ Önbellek İstatistikleri (L1 + SQLite)
+app.get('/api/cache/stats', (req, res) => {
+  res.json({
+    success: true,
+    cache: getCacheStats()
+  });
+});
+
+// 🕷️ Otonom Link Keşifli Derin Tarama Tetikleyicisi
+app.post('/api/crawl/batch-discover', async (req, res) => {
+  try {
+    const { maxPages = 50, concurrency = 3 } = req.body || {};
+    
+    // Başlangıç için kayıtlı Türk sitelerinin URL'lerini çek
+    const siteRows = db.prepare('SELECT url FROM sites LIMIT 50').all();
+    const startUrls = siteRows.map(s => s.url).filter(Boolean);
+
+    if (startUrls.length === 0) {
+      startUrls.push('https://www.turkiye.gov.tr', 'https://www.tubitak.gov.tr', 'https://www.aa.com.tr');
+    }
+
+    const result = await runBatchCrawler(startUrls, Math.min(maxPages, 500), Math.min(concurrency, 5));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 📊 Tarayıcı Canlı İlerleme Durumu
+app.get('/api/crawl/status', (req, res) => {
+  res.json({
+    success: true,
+    crawler: crawlerState
+  });
 });
 
 // 2. Siteler Listesi
