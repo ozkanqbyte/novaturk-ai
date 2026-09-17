@@ -21,6 +21,7 @@ import HistoryModal from './components/HistoryModal';
 import NovaTurkGoogleLogo from './components/NovaTurkGoogleLogo';
 import SponsoredShowcase from './components/SponsoredShowcase';
 import DynamicIsland from './components/DynamicIsland';
+import DealHunterWidget from './components/DealHunterWidget';
 import BusinessAdsModal from './components/BusinessAdsModal';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
