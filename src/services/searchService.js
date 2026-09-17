@@ -5,6 +5,7 @@
 import { searchTurkishIndex } from './localIndexService.js';
 import { generateAgentSwarmData } from './agentService.js';
 import { resolveNavigationalIntent } from './navigationalService.js';
+import { generateIntelligenceInsights } from './aiIntelligenceService.js';
 
 export const API_BASE = import.meta.env.VITE_API_URL || (
   typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1') && !window.location.hostname.includes('onrender.com')
@@ -771,6 +772,9 @@ export async function executeSearch(query, isDeepSearch = false) {
   // 9. Canlı Gerçek Görseller (Wikimedia Commons)
   const visuals = await fetchRealVisuals(query);
 
+  // 10. Apple & Perplexity Standartlarında "Sadede Gel" ve "Halk Ne Diyor?" Sentezi
+  const insights = generateIntelligenceInsights(query, webResults);
+
   return {
     query,
     isDeepSearch,
@@ -779,6 +783,8 @@ export async function executeSearch(query, isDeepSearch = false) {
     isUsingLiveBrave,
     webResults,
     aiSummary,
+    sadedeGel: insights.sadedeGel,
+    halkNeDiyor: insights.halkNeDiyor,
     relatedQuestions,
     visuals,
     news: getNewsResults(query),
