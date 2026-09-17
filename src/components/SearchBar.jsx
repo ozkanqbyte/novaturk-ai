@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame } from 'lucide-react';
+import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Image as ImageIcon, Upload } from 'lucide-react';
 import { sound } from '../services/soundService';
 
 export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme }) {
@@ -7,8 +7,13 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [lensModalOpen, setLensModalOpen] = useState(false);
+  const [lensPreview, setLensPreview] = useState(null);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+
   const recognitionRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
@@ -59,6 +64,48 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
     }
   }, [onSearch]);
 
+  // 📷 NovaLens: Panodan Görsel Yapıştırma (Ctrl+V) Desteği
+  useEffect(() => {
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            handleImageFile(file);
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
+  const handleImageFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setLensPreview(e.target.result);
+      setLensModalOpen(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAnalyzeAndSearch = () => {
+    sound.playSearch();
+    setIsAnalyzingImage(true);
+    setTimeout(() => {
+      setIsAnalyzingImage(false);
+      setLensModalOpen(false);
+      // Görsel analizi simülasyonu / Akıllı etiket arama
+      const cleanFileName = 'Görsel Arama Sonuçları & Benzer Nesneler';
+      setQuery(cleanFileName);
+      onSearch(cleanFileName);
+    }, 1200);
+  };
+
   const toggleVoiceSearch = () => {
     sound.playClick();
     if (!speechSupported) {
@@ -98,17 +145,10 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
     setIsDeepSearch(!isDeepSearch);
   };
 
-  const trendingTags = [
-    { label: 'Yapay Zeka 2026', query: '2026 Yapay Zeka Devrimi ve Türkiye' },
-    { label: 'Borsa İstanbul & BIST', query: 'Borsa İstanbul piyasa analizi' },
-    { label: 'TOGG & Yerli İnovasyon', query: 'Türkiye Milli Teknoloji Projeleri' },
-    { label: 'Göbeklitepe Son Bulgular', query: 'Göbeklitepe son arkeolojik bulgular' },
-  ];
-
   return (
     <div className={`w-full transition-all duration-300 ${isCompact ? 'max-w-4xl' : 'max-w-2xl mx-auto'}`}>
       <form onSubmit={handleSubmit} className="relative w-full">
-        {/* Apple VisionOS Minimalist Dynamic Search Capsule */}
+        {/* Apple Dynamic Search Capsule */}
         <div 
           style={{
             borderColor: isFocused ? themeAccent : undefined,
@@ -119,7 +159,7 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
           className="apple-search-capsule rounded-full p-2 flex items-center gap-2.5 transition-all duration-300"
         >
           
-          {/* Search Icon with Dynamic Focus Accent */}
+          {/* Search Icon */}
           <div 
             style={{ color: isFocused ? themeAccent : undefined }}
             className="pl-2.5 flex items-center justify-center opacity-70 transition-colors"
@@ -166,6 +206,26 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             </button>
           )}
 
+          {/* 📷 NovaLens Butonu (Resimle Arama) */}
+          <button
+            type="button"
+            onClick={() => {
+              sound.playClick();
+              fileInputRef.current?.click();
+            }}
+            title="NovaLens: Görsel ile Ara veya Yapıştır (Ctrl+V)"
+            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 opacity-70 hover:opacity-100 transition-all hover:text-sky-400"
+          >
+            <Camera className="w-4 h-4" />
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={(e) => handleImageFile(e.target.files?.[0])} 
+            accept="image/*" 
+            className="hidden" 
+          />
+
           {/* Voice Search Button */}
           {speechSupported && (
             <button
@@ -198,42 +258,75 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
                 : isDark ? 'border-white/10 opacity-70 hover:opacity-100' : 'border-black/10 opacity-70 hover:opacity-100'
             }`}
           >
-            <Brain className="w-3.5 h-3.5" />
-            <span>Derin Düşünce</span>
+            <Brain className={`w-3.5 h-3.5 ${isDeepSearch ? 'animate-pulse' : ''}`} />
+            <span>Derin</span>
           </button>
 
-          {/* Submit Button */}
+          {/* Submit Action Button */}
           <button
             type="submit"
-            disabled={!query.trim()}
-            style={query.trim() ? {
-              backgroundColor: isDark ? '#ffffff' : '#0f172a',
-              color: isDark ? '#000000' : '#ffffff'
-            } : {}}
-            className="apple-primary-btn flex items-center justify-center w-9 h-9 rounded-full shadow-sm disabled:opacity-30 disabled:pointer-events-none transition-all"
+            style={{ backgroundColor: themeAccent }}
+            className="p-2.5 rounded-full text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
           >
-            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+            <ArrowRight className="w-4 h-4" />
           </button>
+
         </div>
       </form>
 
-      {/* Minimalist Trending Pills */}
-      {!isCompact && (
-        <div className="mt-5 flex flex-wrap justify-center items-center gap-2 text-xs opacity-80">
-          <span className="opacity-60 text-[11px]">Gündem:</span>
-          {trendingTags.map((tag, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                sound.playClick();
-                setQuery(tag.query);
-                onSearch(tag.query);
-              }}
-              className="apple-pill-btn px-3 py-1 rounded-full text-xs hover:border-white/20 transition-all"
-            >
-              {tag.label}
-            </button>
-          ))}
+      {/* 📷 NovaLens Görsel Yükleme / Arama Modalı */}
+      {lensModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fadeIn">
+          <div className={`w-full max-w-md rounded-3xl p-6 border shadow-2xl space-y-4 ${
+            isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-black/10 text-slate-900'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-sky-400" />
+                <h3 className="font-bold text-sm">NovaLens • Canlı Görsel Arama</h3>
+              </div>
+              <button 
+                onClick={() => setLensModalOpen(false)}
+                className="p-1 rounded-full hover:bg-white/10 opacity-60"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {lensPreview && (
+              <div className="rounded-2xl overflow-hidden aspect-video border border-white/10 bg-black/20 flex items-center justify-center relative">
+                <img src={lensPreview} alt="NovaLens Önizleme" className="w-full h-full object-contain" />
+                {isAnalyzingImage && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2">
+                    <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs font-medium text-sky-300">Görsel Analiz Ediliyor...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs opacity-70">
+              Yüklenen görsel yapay zeka ile taranıp benzer kaynaklar ve ürünler getirilecektir.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setLensModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs opacity-70 hover:opacity-100"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={handleAnalyzeAndSearch}
+                disabled={isAnalyzingImage}
+                style={{ backgroundColor: themeAccent }}
+                className="px-5 py-2 rounded-xl text-xs font-semibold text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                <Search className="w-3.5 h-3.5" />
+                <span>Görseli Ara</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

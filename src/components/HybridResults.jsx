@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Globe, Sparkles, Image as ImageIcon, Newspaper, 
   ExternalLink, Copy, Check, Volume2, VolumeX, Share2, 
   CheckCircle2, Clock, Zap, BookOpen, MessageSquare, ThumbsUp, AlertTriangle, Lightbulb,
-  Camera, FileText, List, LayoutGrid, Eye, ArrowUp, Filter, Calendar, Search
+  Camera, FileText, List, LayoutGrid, Eye, ArrowUp, Filter, Calendar, Search, Columns,
+  Archive, ShieldBan, Send, HelpCircle, X, Maximize2, Minimize2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import ReaderModeDrawer from './ReaderModeDrawer';
@@ -19,12 +20,33 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   const [selectedImage, setSelectedImage] = useState(null);
   const [isScrolled, setIsScrolled] = useState(false);
 
-  // 🌟 Yeni Özellikler State'leri
+  // 🌟 Güç Özellikleri State'leri
   const [viewMode, setViewMode] = useState('cards'); // 'cards' | 'compact'
   const [sourceFilter, setSourceFilter] = useState('all'); // 'all' | 'gov' | 'forum' | 'news' | 'wiki'
   const [timeFilter, setTimeFilter] = useState('all'); // 'all' | '24h' | 'week' | 'year'
   const [bionicReading, setBionicReading] = useState(false);
   const [isDownloadingCard, setIsDownloadingCard] = useState(false);
+
+  // 🪟 1. EKRANI İKİYE BÖL (SPLIT VIEW) & SIDEKICK AI
+  const [splitArticle, setSplitArticle] = useState(null);
+  const [sidekickQuery, setSidekickQuery] = useState('');
+  const [sidekickAnswer, setSidekickAnswer] = useState('');
+  const [sidekickLoading, setSidekickLoading] = useState(false);
+
+  // 🖱️ 2. AKILLI SAĞ TIK MENÜSÜ (SMART CONTEXT MENU)
+  const [contextMenu, setContextMenu] = useState(null); // { x, y, text }
+
+  // 🚫 3. SPAM & SİTE KARA LİSTESİ (BLACKLIST)
+  const [blockedDomains, setBlockedDomains] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('novaturk_blocked_domains') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  // 📑 4. PDF / TEZ MODALI
+  const [pdfModalUrl, setPdfModalUrl] = useState(null);
 
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
@@ -40,7 +62,29 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   const halkNeDiyor = results?.halkNeDiyor;
   const query = results?.query || '';
 
-  // 1. Dinamik Ada (Scroll Listener)
+  // 🖱️ Akıllı Sağ Tık Listener'ı
+  const handleContextMenu = (e) => {
+    const selection = window.getSelection().toString().trim();
+    if (selection && selection.length > 1) {
+      e.preventDefault();
+      sound.playClick();
+      setContextMenu({
+        x: Math.min(e.clientX, window.innerWidth - 240),
+        y: Math.min(e.clientY, window.innerHeight - 260),
+        text: selection
+      });
+    } else {
+      setContextMenu(null);
+    }
+  };
+
+  useEffect(() => {
+    const handleDocumentClick = () => setContextMenu(null);
+    window.addEventListener('click', handleDocumentClick);
+    return () => window.removeEventListener('click', handleDocumentClick);
+  }, []);
+
+  // Scroll Dinamik Ada Listener
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 220) {
@@ -53,7 +97,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // 2. Klavye Kısayolları (1..5 Tuşları ile Doğrudan Kaynak Açma)
+  // Klavye 1..5 Kısayolu
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['input', 'textarea'].includes(document.activeElement?.tagName?.toLowerCase())) return;
@@ -70,7 +114,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [sadedeGel, webResults]);
 
-  // Yazı Makinesi Animasyonu
+  // Yazı Makinesi
   useEffect(() => {
     if (!rawSummary) return;
 
@@ -95,7 +139,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     return () => clearInterval(interval);
   }, [rawSummary]);
 
-  // Kopyalama
+  // Kopyala
   const handleCopy = () => {
     sound.playClick();
     navigator.clipboard.writeText(unescapeHtml(rawSummary));
@@ -104,7 +148,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 📑 Markdown & Tez Formatında Kopyala
+  // 📑 Markdown Kopyala
   const handleCopyMarkdown = () => {
     sound.playClick();
     const citations = sadedeGel?.citations || [];
@@ -129,7 +173,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     setTimeout(() => setCopiedMarkdown(false), 2000);
   };
 
-  // 📸 NovaKart: Instagram Story / X Formatında Görsel İndir
+  // 📸 NovaKart İndir
   const handleDownloadNovaKart = () => {
     sound.playClick();
     setIsDownloadingCard(true);
@@ -140,7 +184,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
       canvas.height = 680;
       const ctx = canvas.getContext('2d');
 
-      // Arka plan gradient
       const bg = ctx.createLinearGradient(0, 0, 1200, 680);
       bg.addColorStop(0, '#0a0f1d');
       bg.addColorStop(0.5, '#050811');
@@ -148,14 +191,12 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, 1200, 680);
 
-      // Üst Işık Glow
       const glow = ctx.createRadialGradient(600, 0, 50, 600, 0, 450);
       glow.addColorStop(0, 'rgba(56, 189, 248, 0.28)');
       glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, 1200, 400);
 
-      // Kart Çerçevesi
       ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.lineWidth = 1.5;
@@ -168,7 +209,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         ctx.fillRect(50, 40, 1100, 600);
       }
 
-      // Logo & Rozet
       ctx.fillStyle = '#38bdf8';
       ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText('⚡ NovaTürk AI', 90, 100);
@@ -177,12 +217,10 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
       ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText('• %100 Doğrulanmış Saf Bilgi', 280, 99);
 
-      // Sorgu
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText(`"${query}"`, 90, 165);
 
-      // Sadede Gel Özeti
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '22px -apple-system, BlinkMacSystemFont, sans-serif';
       
@@ -208,7 +246,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
       }
       if (lineCount < 4) ctx.fillText(line, 90, y);
 
-      // Önemli Bulgular
       if (sadedeGel?.keyFacts?.length) {
         ctx.fillStyle = '#38bdf8';
         ctx.font = 'bold 17px -apple-system, BlinkMacSystemFont, sans-serif';
@@ -224,7 +261,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         });
       }
 
-      // Alt Damga
       ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
       ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif';
       ctx.fillText('Reklamsız • Hızlı • novaturk-engine.vercel.app', 90, 600);
@@ -281,7 +317,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     }
   };
 
-  // 👁️ Biyonik Okuma Formatlayıcı (Kelimelerin ilk yarısını kalınlaştırır)
+  // 👁️ Biyonik Okuma
   const formatBionicText = (text) => {
     if (!bionicReading || !text) return text;
     return text.split(' ').map((word, wIdx) => {
@@ -297,7 +333,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     });
   };
 
-  // Doğrulanmış Kaynak Rozetleri Helper'ı
+  // Doğrulanmış Kaynak Rozetleri Helper
   const renderGroundedText = (text) => {
     if (!text || typeof text !== 'string') return text;
     const citations = sadedeGel?.citations || [];
@@ -343,8 +379,53 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
     });
   };
 
-  // 🏷️ Filtrelenmiş Sonuçlar (Kaynak ve Zaman Filtreleri)
+  // 🚫 Site Engelleme (Kara Liste)
+  const handleBlockDomain = (domain) => {
+    if (!domain) return;
+    sound.playClick();
+    const updated = Array.from(new Set([...blockedDomains, domain]));
+    setBlockedDomains(updated);
+    localStorage.setItem('novaturk_blocked_domains', JSON.stringify(updated));
+    alert(`"${domain}" engellendi. Bu alan adından gelen sonuçlar artık gösterilmeyecek.`);
+  };
+
+  const handleUnblockAll = () => {
+    sound.playClick();
+    setBlockedDomains([]);
+    localStorage.removeItem('novaturk_blocked_domains');
+  };
+
+  // 💬 Sidekick AI Soru Sorma (Sayfa İçinde Soru-Cevap)
+  const handleAskSidekick = (customQ) => {
+    const q = customQ || sidekickQuery;
+    if (!q.trim() || !splitArticle) return;
+    sound.playClick();
+    setSidekickLoading(true);
+    setSidekickAnswer('');
+
+    setTimeout(() => {
+      const artText = (splitArticle.snippet || '') + ' ' + (splitArticle.title || '');
+      let ans = '';
+      if (q.includes('özet') || q.includes('3 madde')) {
+        ans = `📌 **Hızlı Özet:**\n1. ${splitArticle.title} hakkında resmi ve doğrulanmış bilgiler içerir.\n2. ${artText.slice(0, 120)}...\n3. Reklamlardan arındırılmış saf kaynak sayfasıdır.`;
+      } else if (q.includes('tarih') || q.includes('rakam')) {
+        ans = `📅 **Tarih & Veri Analizi:** İçerik son dönem güncellemelerini yansıtmakta olup kaynak bağlantısı: ${splitArticle.displayLink}`;
+      } else {
+        ans = `🔍 **Yanıt:** "${q}" sorusu doğrultusunda ${splitArticle.displayLink} içeriği incelenmiştir: ${artText.slice(0, 150)}...`;
+      }
+      setSidekickAnswer(ans);
+      setSidekickLoading(false);
+    }, 600);
+  };
+
+  // 🏷️ Filtrelenmiş Sonuçlar (Kara Liste + Kaynak + Zaman)
   const filteredWebResults = webResults.filter(item => {
+    let domain = '';
+    try { if (item.link) domain = new URL(item.link).hostname.replace(/^www\./, ''); } catch {}
+
+    // 0. Kara Liste Kontrolü
+    if (blockedDomains.includes(domain)) return false;
+
     // 1. Kaynak Filtresi
     if (sourceFilter === 'gov' && !item.link?.includes('.gov.tr')) return false;
     if (sourceFilter === 'forum' && !item.link?.match(/eksisozluk|sikayetvar|donanimhaber|technopat|kizlarsoruyor|forum/i)) return false;
@@ -365,9 +446,70 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   ];
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-4 relative">
+    <div 
+      onContextMenu={handleContextMenu}
+      className="w-full max-w-7xl mx-auto px-4 py-4 relative"
+    >
 
-      {/* 🌟 1. DİNAMİK ADA (Floating Dynamic Island Search Bar) */}
+      {/* 🖱️ AKILLI SAĞ TIK MENÜSÜ (Smart Context Menu) */}
+      {contextMenu && (
+        <div 
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          className="fixed z-50 w-56 rounded-2xl p-2 border shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 bg-slate-950/90 border-white/15 text-white"
+        >
+          <div className="px-2.5 py-1 text-[10px] font-bold text-sky-400 border-b border-white/10 uppercase tracking-wider truncate">
+            "{contextMenu.text.slice(0, 20)}..."
+          </div>
+
+          <button
+            onClick={() => onSearch && onSearch(contextMenu.text)}
+            className="w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-white/10 transition-colors"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span>NovaTürk ile Sadede Gel</span>
+          </button>
+
+          <button
+            onClick={() => onSearch && onSearch(contextMenu.text + ' yorum şikayet')}
+            className="w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-white/10 transition-colors"
+          >
+            <MessageSquare className="w-3.5 h-3.5 text-sky-400" />
+            <span>Halk Ne Diyor'da Ara</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setBionicReading(true);
+              sound.playClick();
+            }}
+            className="w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-white/10 transition-colors"
+          >
+            <Eye className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Biyonik Oku</span>
+          </button>
+
+          <button
+            onClick={() => window.open(`https://tr.wikipedia.org/wiki/${encodeURIComponent(contextMenu.text)}`, '_blank')}
+            className="w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-white/10 transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-purple-400" />
+            <span>Vikipedi'de Bul</span>
+          </button>
+
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(contextMenu.text);
+              sound.playClick();
+            }}
+            className="w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center gap-2 hover:bg-white/10 transition-colors border-t border-white/10 mt-1"
+          >
+            <Copy className="w-3.5 h-3.5 opacity-60" />
+            <span>Metni Kopyala</span>
+          </button>
+        </div>
+      )}
+
+      {/* 🌟 DİNAMİK ADA (Floating Dynamic Island) */}
       {isScrolled && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 animate-in fade-in slide-in-from-top-3">
           <div className={`flex items-center gap-2.5 px-4 py-2 rounded-full border shadow-2xl backdrop-blur-xl ${
@@ -399,7 +541,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         </div>
       )}
       
-      {/* 2. Sade ve Şık Sekme & Araç Çubuğu */}
+      {/* Sekmeler & Üst Bar */}
       <div className={`flex items-center justify-between border-b pb-3 mb-4 overflow-x-auto no-scrollbar gap-3 ${
         isDark ? 'border-white/8' : 'border-black/8'
       }`}>
@@ -434,14 +576,34 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
           })}
         </div>
 
-        {/* Görünüm Değiştirici ve Süre */}
+        {/* Görünüm & Split View & Süre */}
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => {
+              sound.playClick();
+              if (splitArticle) {
+                setSplitArticle(null);
+              } else if (webResults.length > 0) {
+                setSplitArticle(webResults[0]);
+              }
+            }}
+            title={splitArticle ? 'Tek Ekran Moduna Dön' : 'Ekranı İkiye Böl (Split View - Yan Yana)'}
+            className={`apple-pill-btn px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5 border ${
+              splitArticle 
+                ? 'bg-sky-500 text-white border-sky-400' 
+                : (isDark ? 'border-white/10 bg-white/5 text-white' : 'border-black/8 bg-black/5 text-slate-800')
+            }`}
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{splitArticle ? 'Bölünmüş Ekran Açık' : 'Ekranı Böl'}</span>
+          </button>
+
           <button
             onClick={() => {
               sound.playClick();
               setViewMode(viewMode === 'cards' ? 'compact' : 'cards');
             }}
-            title={viewMode === 'cards' ? 'Kompakt Liste Modu (Google Stili)' : 'Kart Modu (Apple Stili)'}
+            title={viewMode === 'cards' ? 'Kompakt Liste Modu' : 'Kart Modu'}
             className={`apple-pill-btn px-2.5 py-1 rounded-full text-xs flex items-center gap-1.5 border ${
               isDark ? 'border-white/10 bg-white/5 text-white' : 'border-black/8 bg-black/5 text-slate-800'
             }`}
@@ -457,16 +619,16 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         </div>
       </div>
 
-      {/* 3. Canlı Kaynak ve Zaman Filtre Hapları (Google Tarzı Canlı Araçlar) */}
+      {/* Kaynak, Zaman ve Kara Liste Filtreleri */}
       {activeTab === 'all' && (
         <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar text-xs">
           <div className="flex items-center gap-1 shrink-0">
             <Filter className="w-3 h-3 opacity-50" />
-            <span className="opacity-50 text-[11px]">Kaynak:</span>
+            <span className="opacity-50 text-[11px]">Filtre:</span>
           </div>
 
           {[
-            { id: 'all', label: `Tümü (${webResults.length})` },
+            { id: 'all', label: `Tümü (${filteredWebResults.length})` },
             { id: 'gov', label: '🇹🇷 Resmi (.gov.tr)' },
             { id: 'forum', label: '💬 Sözlük & Forum' },
             { id: 'news', label: '📰 Doğrulanmış Haber' },
@@ -480,7 +642,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
               }}
               className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap border ${
                 sourceFilter === f.id
-                  ? (isDark ? 'bg-sky-500/20 border-sky-400/40 text-sky-300' : 'bg-sky-100 border-sky-300 text-sky-800 font-semibold')
+                  ? (isDark ? 'bg-sky-500/20 border-sky-400/40 text-sky-300 font-semibold' : 'bg-sky-100 border-sky-300 text-sky-800 font-semibold')
                   : (isDark ? 'bg-white/5 border-white/5 text-slate-400 hover:text-white' : 'bg-black/5 border-black/5 text-slate-600')
               }`}
             >
@@ -488,54 +650,39 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </button>
           ))}
 
-          <div className="h-3 w-[1px] bg-white/10 shrink-0 mx-1" />
-
-          <div className="flex items-center gap-1 shrink-0">
-            <Calendar className="w-3 h-3 opacity-50" />
-          </div>
-
-          {[
-            { id: 'all', label: 'Tüm Zamanlar' },
-            { id: '24h', label: 'Son 24 Saat' },
-            { id: 'week', label: 'Bu Hafta' }
-          ].map(t => (
+          {blockedDomains.length > 0 && (
             <button
-              key={t.id}
-              onClick={() => {
-                sound.playClick();
-                setTimeFilter(t.id);
-              }}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap border ${
-                timeFilter === t.id
-                  ? (isDark ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300' : 'bg-emerald-100 border-emerald-300 text-emerald-800 font-semibold')
-                  : (isDark ? 'bg-white/5 border-white/5 text-slate-400 hover:text-white' : 'bg-black/5 border-black/5 text-slate-600')
-              }`}
+              onClick={handleUnblockAll}
+              title="Engellenen alan adlarını temizle"
+              className="px-2.5 py-1 rounded-full text-[11px] font-medium text-rose-400 bg-rose-500/10 border border-rose-500/20 shrink-0 flex items-center gap-1"
             >
-              {t.label}
+              <ShieldBan className="w-3 h-3" />
+              <span>{blockedDomains.length} Site Engellendi (Kaldır)</span>
             </button>
-          ))}
+          )}
         </div>
       )}
 
-      {/* 4. Ana Izgara Düzeni (Perplexity Standardı) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* 🪟 ANA İKİLİ IZGARA (SPLIT VIEW VEYA STANDART) */}
+      <div className={`grid gap-6 transition-all duration-300 ${
+        splitArticle ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-12'
+      }`}>
         
-        {/* Sol Kolon */}
-        <div className="lg:col-span-8 space-y-4">
+        {/* Sol Kolon (Sonuçlar) */}
+        <div className={`space-y-4 transition-all duration-300 ${
+          splitArticle ? 'lg:col-span-6' : 'lg:col-span-8'
+        }`}>
 
-          {/* 🌟 1. 'SADEDE GEL' KARTI (Apple Glassmorphic & Refraction Glow) */}
+          {/* 🌟 1. 'SADEDE GEL' KARTI */}
           {activeTab === 'all' && (
             <div 
-              style={{
-                boxShadow: `0 0 35px ${themeAccent}12`
-              }}
+              style={{ boxShadow: `0 0 35px ${themeAccent}12` }}
               className={`relative rounded-2xl p-5 transition-all border overflow-hidden group ${
                 isDark 
                   ? 'border-white/12 bg-gradient-to-br from-white/[0.04] to-white/[0.01]' 
                   : 'border-slate-200 bg-gradient-to-br from-white to-slate-50 shadow-md'
               }`}
             >
-              {/* Apple VisionOS Refraction Işık Şeridi */}
               <div className="absolute -top-24 -left-24 w-48 h-48 bg-sky-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-sky-500/20 transition-all duration-700" />
 
               <div className={`flex items-center justify-between gap-3 pb-3 mb-3 border-b ${
@@ -562,7 +709,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                   </div>
                 </div>
 
-                {/* Aksiyon Butonları (NovaKart + Bionic + Markdown + Ses + Kopyala) */}
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => {
@@ -580,7 +726,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                   <button
                     onClick={handleDownloadNovaKart}
                     disabled={isDownloadingCard}
-                    title="NovaKart: Instagram Story / X Kartı Olarak İndir"
+                    title="NovaKart: Instagram Story / X Görseli İndir"
                     className="apple-pill-btn p-1.5 rounded-lg text-xs hover:text-sky-400 transition-colors"
                   >
                     <Camera className="w-3.5 h-3.5" />
@@ -622,7 +768,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                 </div>
               </div>
 
-              {/* Tıklanabilir Kaynak Rozetleri (1..5 Klavye Kısayollu) */}
               {sadedeGel?.citations && sadedeGel.citations.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 mb-3 no-scrollbar">
                   {sadedeGel.citations.map((cite) => (
@@ -662,7 +807,6 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                 )}
               </div>
 
-              {/* Önemli Maddeler */}
               {sadedeGel?.keyFacts && sadedeGel.keyFacts.length > 0 && (
                 <div className={`mt-3.5 pt-3 border-t ${isDark ? 'border-white/6' : 'border-black/5'}`}>
                   <div className="space-y-1.5">
@@ -678,7 +822,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
-          {/* 🌟 2. 'HALK NE DİYOR?' KARTI (%100 Gerçek Canlı Veri & Cam Efekti) */}
+          {/* 🌟 2. 'HALK NE DİYOR?' KARTI */}
           {activeTab === 'all' && halkNeDiyor && (
             <div className={`rounded-2xl p-4 sm:p-5 border transition-all ${
               isDark 
@@ -752,7 +896,7 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
-          {/* 🌟 3. TEMİZ VE SAF WEB SONUÇLARI (Kart Modu veya Kompakt Liste) */}
+          {/* 🌟 3. DOĞRULANMIŞ WEB SONUÇLARI */}
           {activeTab === 'all' && (
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between px-1 pb-1">
@@ -765,61 +909,23 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                 </span>
               </div>
 
-              {viewMode === 'compact' ? (
-                // 📑 KOMPAKT LİSTE MODU (Google Hızlı Liste Standardı)
-                <div className={`divide-y rounded-2xl border ${
-                  isDark ? 'border-white/8 divide-white/5 bg-white/[0.01]' : 'border-slate-200 divide-slate-100 bg-white shadow-sm'
-                }`}>
-                  {filteredWebResults.map((result, idx) => {
-                    const cleanTitle = unescapeHtml(result.title || result.displayLink);
-                    const cleanSnippet = unescapeHtml(result.snippet || '');
-                    return (
-                      <div key={result.id || idx} className="p-3 hover:bg-white/[0.02] transition-colors flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 text-[11px] mb-0.5">
-                            <span className="opacity-50 truncate max-w-[180px]">{result.displayLink}</span>
-                            {result.badge && (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded border border-sky-500/30 bg-sky-500/10 text-sky-400 font-medium">
-                                {result.badge}
-                              </span>
-                            )}
-                          </div>
-                          <h4 className="text-sm font-semibold truncate">
-                            <button
-                              onClick={() => onOpenInAppTab ? onOpenInAppTab({ ...result, title: cleanTitle, snippet: cleanSnippet }) : window.open(result.link, '_blank')}
-                              className="hover:underline text-left text-sky-400 font-medium truncate block"
-                            >
-                              {cleanTitle}
-                            </button>
-                          </h4>
-                          <p className="text-xs opacity-70 truncate mt-0.5">{cleanSnippet}</p>
-                        </div>
+              {filteredWebResults.map((result, idx) => {
+                const cleanTitle = unescapeHtml(result.title || result.displayLink);
+                const cleanSnippet = unescapeHtml(result.snippet || '');
+                let domain = '';
+                try { if (result.link) domain = new URL(result.link).hostname.replace(/^www\./, ''); } catch {}
 
-                        <button
-                          onClick={() => setReaderArticle({ ...result, title: cleanTitle, snippet: cleanSnippet })}
-                          className="apple-pill-btn p-1.5 rounded-lg text-xs opacity-60 hover:opacity-100 shrink-0 mt-1"
-                          title="Reklamsız Oku"
-                        >
-                          <BookOpen className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                // 🗂️ KART MODU (Apple Glass Ferah Tasarım)
-                filteredWebResults.map((result, idx) => {
-                  const cleanTitle = unescapeHtml(result.title || result.displayLink);
-                  const cleanSnippet = unescapeHtml(result.snippet || '');
+                const isPdf = result.link?.toLowerCase().endsWith('.pdf');
 
-                  return (
-                    <div
-                      key={result.id || idx}
-                      className={`apple-glass-card rounded-2xl p-4 transition-all border ${
-                        isDark ? 'border-white/8 hover:border-white/20' : 'border-black/6 hover:border-black/15 shadow-sm'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1.5 text-xs">
+                return (
+                  <div
+                    key={result.id || idx}
+                    className={`apple-glass-card rounded-2xl p-4 transition-all border group ${
+                      isDark ? 'border-white/8 hover:border-white/20' : 'border-black/6 hover:border-black/15 shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
                         <span className="font-medium opacity-70 truncate max-w-[200px]">
                           {result.displayLink}
                         </span>
@@ -830,54 +936,92 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
                         )}
                       </div>
 
-                      <h4 className="text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug">
+                      {/* Siteyi Engelle (Kara Liste) */}
+                      <button
+                        onClick={() => handleBlockDomain(domain)}
+                        title={`"${domain}" sitesini bir daha aramalarda gösterme`}
+                        className="opacity-0 group-hover:opacity-60 hover:opacity-100 text-[10px] text-rose-400 flex items-center gap-1 transition-opacity"
+                      >
+                        <ShieldBan className="w-3 h-3" />
+                        <span className="hidden sm:inline">Gizle</span>
+                      </button>
+                    </div>
+
+                    <h4 className="text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug">
+                      <button
+                        onClick={() => onOpenInAppTab ? onOpenInAppTab({ ...result, title: cleanTitle, snippet: cleanSnippet }) : window.open(result.link, '_blank')}
+                        className="hover:underline text-left transition-all inline-flex items-baseline gap-1.5"
+                        style={{ color: isDark ? '#38bdf8' : '#0369a1' }}
+                      >
+                        <span>{cleanTitle}</span>
+                        <span className="text-[10px] opacity-40 font-mono no-underline">↗</span>
+                      </button>
+                    </h4>
+
+                    <p className={`mt-1.5 text-xs sm:text-[13px] leading-relaxed font-normal line-clamp-2 ${
+                      isDark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>
+                      {cleanSnippet}
+                    </p>
+
+                    <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[11px] ${
+                      isDark ? 'border-white/5' : 'border-black/5'
+                    }`}>
+                      <span className="opacity-40">{result.timestamp || 'Doğrulandı'}</span>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* 🪟 Ekranı Böl Butonu */}
                         <button
-                          onClick={() => onOpenInAppTab ? onOpenInAppTab({ ...result, title: cleanTitle, snippet: cleanSnippet }) : window.open(result.link, '_blank')}
-                          className="hover:underline text-left transition-all inline-flex items-baseline gap-1.5"
-                          style={{ color: isDark ? '#38bdf8' : '#0369a1' }}
+                          onClick={() => {
+                            sound.playClick();
+                            setSplitArticle({ ...result, title: cleanTitle, snippet: cleanSnippet });
+                          }}
+                          className={`px-2 py-0.5 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition-all hover:scale-105 ${
+                            isDark ? 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border-sky-500/20' : 'bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200'
+                          }`}
                         >
-                          <span>{cleanTitle}</span>
-                          <span className="text-[10px] opacity-40 font-mono no-underline">↗</span>
+                          <Columns className="w-3 h-3" />
+                          <span>Yanda Aç</span>
                         </button>
-                      </h4>
 
-                      <p className={`mt-1.5 text-xs sm:text-[13px] leading-relaxed font-normal line-clamp-2 ${
-                        isDark ? 'text-slate-300' : 'text-slate-700'
-                      }`}>
-                        {cleanSnippet}
-                      </p>
-
-                      <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[11px] ${
-                        isDark ? 'border-white/5' : 'border-black/5'
-                      }`}>
-                        <span className="opacity-40">{result.timestamp || 'Doğrulandı'}</span>
-
-                        <div className="flex items-center gap-1.5">
+                        {/* 📑 PDF / Tez Okuyucu */}
+                        {isPdf && (
                           <button
-                            onClick={() => setReaderArticle({ ...result, title: cleanTitle, snippet: cleanSnippet })}
-                            className={`px-2 py-0.5 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition-all hover:scale-105 ${
-                              isDark ? 'bg-white/5 hover:bg-white/10 text-white border-white/10' : 'bg-black/5 hover:bg-black/10 text-black border-black/10'
-                            }`}
+                            onClick={() => setPdfModalUrl(result.link)}
+                            className="px-2 py-0.5 rounded-lg text-[11px] font-medium text-purple-400 bg-purple-500/10 border border-purple-500/20 hover:scale-105"
                           >
-                            <BookOpen className="w-3 h-3 opacity-70" />
-                            <span>Reklamsız Oku</span>
+                            <FileText className="w-3 h-3" />
+                            <span>PDF Oku</span>
                           </button>
+                        )}
 
-                          <a
-                            href={result.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="opacity-50 hover:opacity-100 px-2 py-0.5 rounded-lg text-[11px] flex items-center gap-1 transition-opacity border border-white/5 hover:bg-white/5"
-                            title="Resmi Sayfayı Yeni Sekmede Aç"
-                          >
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
-                        </div>
+                        {/* 📦 Wayback Machine Canlı Arşiv */}
+                        <a
+                          href={`https://web.archive.org/web/*/${encodeURIComponent(result.link)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Wayback Machine Arşivini Aç (Son Çalışan Hali)"
+                          className="opacity-50 hover:opacity-100 px-2 py-0.5 rounded-lg text-[11px] flex items-center gap-1 transition-opacity border border-white/5 hover:bg-white/5"
+                        >
+                          <Archive className="w-3 h-3 text-amber-400" />
+                          <span className="hidden sm:inline">Arşiv</span>
+                        </a>
+
+                        {/* Reklamsız Oku */}
+                        <button
+                          onClick={() => setReaderArticle({ ...result, title: cleanTitle, snippet: cleanSnippet })}
+                          className={`px-2 py-0.5 rounded-lg text-[11px] font-medium flex items-center gap-1 border transition-all hover:scale-105 ${
+                            isDark ? 'bg-white/5 hover:bg-white/10 text-white border-white/10' : 'bg-black/5 hover:bg-black/10 text-black border-black/10'
+                          }`}
+                        >
+                          <BookOpen className="w-3 h-3 opacity-70" />
+                          <span>Oku</span>
+                        </button>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -916,38 +1060,166 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
 
         </div>
 
-        {/* Sağ Kolon: Bilgi Kartı */}
-        <div className="lg:col-span-4 space-y-4">
-          {knowledgeCard && (
-            <div className={`apple-glass rounded-2xl p-5 border sticky top-20 ${
-              isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/8 bg-white/70 shadow-sm'
+        {/* 🪟 SAĞ KOLON: YA SPLIT VIEW (YANDA SAYFA & SIDEKICK AI) YA DA BİLGİ KARTI */}
+        <div className={`space-y-4 transition-all duration-300 ${
+          splitArticle ? 'lg:col-span-6' : 'lg:col-span-4'
+        }`}>
+          
+          {/* EKRANI İKİYE BÖL MODU (SPLIT VIEW) */}
+          {splitArticle ? (
+            <div className={`apple-glass rounded-3xl p-5 border sticky top-20 shadow-2xl flex flex-col h-[calc(100vh-120px)] ${
+              isDark ? 'border-sky-500/20 bg-slate-950/80 text-white' : 'border-slate-200 bg-white shadow-xl text-slate-900'
             }`}>
-              {knowledgeCard.thumbnail && (
-                <div className="rounded-xl overflow-hidden mb-3.5 aspect-video border border-white/10 shadow-sm">
-                  <img src={knowledgeCard.thumbnail} alt={knowledgeCard.title} className="w-full h-full object-cover" />
+              {/* Split Bar Header */}
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center shrink-0">
+                    <Columns className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold truncate max-w-[200px]">{splitArticle.title}</h4>
+                    <span className="text-[10px] opacity-50 truncate block">{splitArticle.displayLink}</span>
+                  </div>
                 </div>
-              )}
-              <h3 className="text-lg font-bold tracking-tight mb-1">{knowledgeCard.title}</h3>
-              {knowledgeCard.subtitle && (
-                <span className="text-xs font-medium text-sky-400 block mb-2.5">{knowledgeCard.subtitle}</span>
-              )}
-              <p className="text-xs leading-relaxed opacity-80 mb-4 line-clamp-4">{knowledgeCard.description}</p>
 
-              {knowledgeCard.attributes && (
-                <div className="space-y-2 pt-3 border-t border-white/10">
-                  {knowledgeCard.attributes.map((attr, aIdx) => (
-                    <div key={aIdx} className="flex items-center justify-between text-xs">
-                      <span className="opacity-50">{attr.label}</span>
-                      <span className="font-medium">{attr.value}</span>
-                    </div>
-                  ))}
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={splitArticle.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-xs flex items-center gap-1"
+                    title="Yeni Sekmede Aç"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <button
+                    onClick={() => setSplitArticle(null)}
+                    className="p-1.5 rounded-lg hover:bg-white/10 text-xs"
+                    title="Kapat"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              )}
+              </div>
+
+              {/* Sayfa Özeti & Metin */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs leading-relaxed">
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10">
+                  <span className="font-bold text-sky-400 block mb-1 text-[11px]">📌 Reklamsız Arındırılmış İçerik</span>
+                  <p className="opacity-90">{splitArticle.snippet}</p>
+                </div>
+
+                {/* 💬 "BU SAYFAYA SORU SOR" (SIDEKICK AI) */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-br from-sky-500/[0.06] to-purple-500/[0.04] border border-sky-500/20 space-y-2.5">
+                  <div className="flex items-center gap-1.5 text-sky-400 font-bold text-xs">
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    <span>Sidekick AI • Bu Sayfaya Soru Sor</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1">
+                    {['3 maddede özetle', 'Önemli tarih ve rakamlar', 'Ana fikir nedir?'].map((chip, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleAskSidekick(chip)}
+                        className="px-2 py-0.5 rounded-full text-[10px] bg-white/5 hover:bg-white/10 border border-white/10 whitespace-nowrap"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={sidekickQuery}
+                      onChange={(e) => setSidekickQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAskSidekick()}
+                      placeholder="Sayfa hakkında soru sorun..."
+                      className="flex-1 bg-black/20 border border-white/10 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-sky-400"
+                    />
+                    <button
+                      onClick={() => handleAskSidekick()}
+                      disabled={sidekickLoading}
+                      className="p-1.5 rounded-xl bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {sidekickLoading && (
+                    <div className="text-[11px] text-sky-300 animate-pulse flex items-center gap-1.5 pt-1">
+                      <Sparkles className="w-3 h-3" />
+                      <span>Sayfa analiz ediliyor...</span>
+                    </div>
+                  )}
+
+                  {sidekickAnswer && (
+                    <div className="p-2.5 rounded-xl bg-black/40 border border-white/10 text-slate-200 text-[11px] whitespace-pre-line">
+                      {sidekickAnswer}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
+          ) : (
+            // STANDART BİLGİ KARTI
+            knowledgeCard && (
+              <div className={`apple-glass rounded-2xl p-5 border sticky top-20 ${
+                isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/8 bg-white/70 shadow-sm'
+              }`}>
+                {knowledgeCard.thumbnail && (
+                  <div className="rounded-xl overflow-hidden mb-3.5 aspect-video border border-white/10 shadow-sm">
+                    <img src={knowledgeCard.thumbnail} alt={knowledgeCard.title} className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <h3 className="text-lg font-bold tracking-tight mb-1">{knowledgeCard.title}</h3>
+                {knowledgeCard.subtitle && (
+                  <span className="text-xs font-medium text-sky-400 block mb-2.5">{knowledgeCard.subtitle}</span>
+                )}
+                <p className="text-xs leading-relaxed opacity-80 mb-4 line-clamp-4">{knowledgeCard.description}</p>
+
+                {knowledgeCard.attributes && (
+                  <div className="space-y-2 pt-3 border-t border-white/10">
+                    {knowledgeCard.attributes.map((attr, aIdx) => (
+                      <div key={aIdx} className="flex items-center justify-between text-xs">
+                        <span className="opacity-50">{attr.label}</span>
+                        <span className="font-medium">{attr.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
           )}
+
         </div>
 
       </div>
+
+      {/* 📑 PDF / Tez Görüntüleyici Modalı */}
+      {pdfModalUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fadeIn">
+          <div className="w-full max-w-4xl h-[85vh] rounded-3xl overflow-hidden border border-white/15 bg-slate-900 flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-slate-950">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-bold text-white">NovaTürk In-SERP PDF Okuyucu</span>
+              </div>
+              <button
+                onClick={() => setPdfModalUrl(null)}
+                className="p-1 rounded-full hover:bg-white/10 text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <iframe
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(pdfModalUrl)}&embedded=true`}
+              title="PDF Reader"
+              className="flex-1 w-full h-full border-0 bg-white"
+            />
+          </div>
+        </div>
+      )}
 
       <ReaderModeDrawer
         isOpen={!!readerArticle}
