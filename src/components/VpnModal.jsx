@@ -7,6 +7,7 @@ import { sound } from '../services/soundService';
 import {
   getVpnState, toggleVpn, setVpnCountry, toggleVpnOption, VPN_LOCATIONS
 } from '../services/vpnService';
+import { API_BASE } from '../services/searchService';
 
 export default function VpnModal({ isOpen, onClose, onVpnChange, isDark = true }) {
   if (!isOpen) return null;
@@ -42,8 +43,7 @@ export default function VpnModal({ isOpen, onClose, onVpnChange, isDark = true }
     sound.playClick();
     setIsCheckingIp(true);
     try {
-      const apiBase = import.meta.env.DEV ? 'http://localhost:3001' : '';
-      const res = await fetch(`${apiBase}/api/vpn/my-ip`);
+      const res = await fetch(`${API_BASE}/api/vpn/my-ip`);
       const data = await res.json();
       if (data && data.ip) {
         setTestedIp(data.ip);

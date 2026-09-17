@@ -90,6 +90,10 @@ class MemoryDbAdapter {
 }
 
 let dbInstance;
+if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
+  console.log(`[NovaTurk DB] 🌐 Turso Cloud DB ortamı algılandı: ${process.env.TURSO_DATABASE_URL}`);
+}
+
 try {
   const sqliteModule = await import('node:sqlite');
   if (sqliteModule && sqliteModule.DatabaseSync) {

@@ -46,6 +46,16 @@ function calculateQualityScore(item, query) {
   return score;
 }
 
+// 💓 0. Ultra Hafif Sağlık & Anti-Sleep Ping Noktası
+app.get('/api/ping', (req, res) => {
+  res.json({
+    status: 'awake',
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    engine: 'NovaTurk AI Production Engine'
+  });
+});
+
 // 1. Sağlık & Durum Kontrolü
 app.get('/api/status', (req, res) => {
   try {
@@ -746,4 +756,20 @@ app.listen(PORT, () => {
   console.log(`🚀 NovaTürk AI Sunucusu Çalışıyor: http://localhost:${PORT}`);
   console.log(`📊 SQLite Veritabanı Aktif & 50 Türk Sitesi Hazır!`);
   console.log(`====================================================`);
+
+  // 🛡️ Otomatik Anti-Sleep Nöbetçisi (Render vb. platformlarda uyumayı engeller)
+  const renderUrl = process.env.RENDER_EXTERNAL_URL || 'https://novaturk-ai.onrender.com';
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER) {
+    console.log(`[NovaTurk Sentinel] Uyanık kalma nöbetçisi devrede: ${renderUrl}/api/ping`);
+    setInterval(async () => {
+      try {
+        const pingRes = await fetch(`${renderUrl}/api/ping`);
+        if (pingRes.ok) {
+          console.log(`[NovaTurk Sentinel] Ping başarılı: ${new Date().toLocaleTimeString('tr-TR')}`);
+        }
+      } catch (err) {
+        console.warn(`[NovaTurk Sentinel] Ping uyarısı:`, err.message);
+      }
+    }, 9 * 60 * 1000); // 9 dakikada bir (15 dk uyku sınırından önce)
+  }
 });

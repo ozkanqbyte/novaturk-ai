@@ -6,7 +6,11 @@ import { searchTurkishIndex } from './localIndexService.js';
 import { generateAgentSwarmData } from './agentService.js';
 import { resolveNavigationalIntent } from './navigationalService.js';
 
-export const API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : '';
+export const API_BASE = import.meta.env.VITE_API_URL || (
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1') && !window.location.hostname.includes('onrender.com')
+    ? 'https://novaturk-ai.onrender.com'
+    : (import.meta.env.DEV ? 'http://localhost:3001' : '')
+);
 
 export const getApiConfig = () => {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
