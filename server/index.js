@@ -500,6 +500,39 @@ app.post('/api/admin/complaints/:id/resolve', requireAdminKey, (req, res) => {
   }
 });
 
+// ---- Bakım: Kaynak (site) Atama Onarımı ----
+// Crawler'daki eski hata yüzünden keşfedilen her sayfa site_id=1'e yazılmıştı; hata
+// düzeltildi ama geçmiş kayıtlar yanlış kaynağı gösteriyor. Bu uç nokta her sayfanın
+// site_id'sini URL'sindeki gerçek hostname'den yeniden türetir.
+app.post('/api/admin/repair/site-attribution', requireAdminKey, (req, res) => {
+  try {
+    const pages = db.prepare('SELECT p.id, p.url, p.site_id, s.domain FROM pages p LEFT JOIN sites s ON s.id = p.site_id').all();
+    const update = db.prepare('UPDATE pages SET site_id = ? WHERE id = ?');
+
+    let fixed = 0, alreadyOk = 0, skipped = 0;
+    for (const page of pages) {
+      let hostname;
+      try {
+        hostname = new URL(page.url).hostname;
+      } catch {
+        skipped++;
+        continue;
+      }
+      if (page.domain === hostname) { alreadyOk++; continue; }
+
+      const correctSiteId = getOrCreateSiteId(hostname);
+      if (correctSiteId === null) { skipped++; continue; } // yasaklı domain
+      update.run(correctSiteId, page.id);
+      fixed++;
+    }
+
+    logAdminAction('repair_site_attribution', null, { fixed, alreadyOk, skipped });
+    res.json({ success: true, total: pages.length, fixed, alreadyOk, skipped });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ---- Audit Log ----
 app.get('/api/admin/audit-log', requireAdminKey, (req, res) => {
   res.json({ success: true, entries: db.prepare('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT 100').all() });
