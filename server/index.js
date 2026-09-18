@@ -1252,12 +1252,21 @@ app.get('/api/search', (req, res) => {
     // suggestSpellingCorrection zaten sözlükte bulunan kelimeleri atlar, yani doğru
     // yazılmış sorgularda maliyeti kelime başına tek indeksli SELECT kadardır.
     // Öneri yalnızca gerçekten daha iyi sonuç veriyorsa gösterilir.
+    // Karşılaştırmayı sonuç SAYISINA bakarak yapmak işe yaramıyor: sonuçlar 20 ile
+    // sınırlı olduğu için hatalı sorgu da düzeltilmiş sorgu da 20 döndürüyor.
+    // Bunun yerine en iyi sonucun alaka puanına bakılıyor.
     let didYouMean = null;
     let correctedResults = null;
     const suggestion = suggestSpellingCorrection(query);
     if (suggestion) {
       const alternative = searchLocalDb(suggestion);
-      if (alternative.length > results.length) {
+      const originalBest = results[0]?.relevanceScore || 0;
+      const correctedBest = alternative[0]?.relevanceScore || 0;
+      const clearlyBetter = results.length === 0
+        ? alternative.length > 0
+        : correctedBest > originalBest * 1.2;
+
+      if (clearlyBetter) {
         didYouMean = suggestion;
         correctedResults = alternative;
       }
