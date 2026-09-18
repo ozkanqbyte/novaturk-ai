@@ -1485,6 +1485,22 @@ app.get('/api/live-web-search', async (req, res) => {
     saveCachedQuery(query, finalResults);
   }
 
+  // "Bunu mu demek istediniz?" — hibrit aramada da göster (arayüzün kullandığı uç burası)
+  let didYouMean = null;
+  try {
+    const suggestion = suggestSpellingCorrection(query);
+    if (suggestion) {
+      const alternative = searchLocalDb(suggestion);
+      const originalBest = ownIndexRows[0]?.relevanceScore || 0;
+      const correctedBest = alternative[0]?.relevanceScore || 0;
+      if (ownIndexRows.length === 0 ? alternative.length > 0 : correctedBest > originalBest * 1.2) {
+        didYouMean = suggestion;
+      }
+    }
+  } catch {
+    // öneri üretilemezse arama yine de sonuç döndürmeli
+  }
+
   res.json({
     success: true,
     count: finalResults.length,
@@ -1492,6 +1508,7 @@ app.get('/api/live-web-search', async (req, res) => {
     source: 'NovaTurk Hibrit Arama (Kendi İndeks + Canlı Web)',
     ownIndexCount: ownIndexResults.length,
     liveWebCount: ddgResults.length,
+    didYouMean,
     results: finalResults
   });
 });
