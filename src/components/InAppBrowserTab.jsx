@@ -56,6 +56,83 @@ export default function InAppBrowserTab({
     }
   });
 
+  // 🌟 Canlı Medya Köprüsü: YouTube Durumunu Dinle ve Ada ile Eşitle
+  useEffect(() => {
+    if (!tab.url?.includes('youtube') && !tab.url?.includes('youtu.be') && !tab.title?.toLowerCase().includes('youtube')) return;
+
+    const interval = setInterval(async () => {
+      if (innerRef.current && typeof innerRef.current.executeJavaScript === 'function') {
+        try {
+          const media = await innerRef.current.executeJavaScript(`
+            window.__novaturk_getMedia ? window.__novaturk_getMedia() : (() => {
+              const v = document.querySelector('video');
+              const t = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.title, #title h1');
+              const c = document.querySelector('#channel-name yt-formatted-string a, #owner-name a');
+              let vId = '';
+              try { vId = new URLSearchParams(window.location.search).get('v') || ''; } catch {}
+              return {
+                title: t ? t.textContent.trim() : document.title.replace(' - YouTube', '').trim(),
+                artist: c ? c.textContent.trim() : 'YouTube Sanatçısı',
+                currentTime: v ? Math.floor(v.currentTime) : 0,
+                duration: v ? Math.floor(v.duration || 0) : 0,
+                paused: v ? v.paused : true,
+                videoId: vId,
+                thumbnail: vId ? ('https://i.ytimg.com/vi/' + vId + '/hqdefault.jpg') : ''
+              };
+            })()
+          `);
+
+          if (media && (media.duration > 0 || media.title)) {
+            window.dispatchEvent(new CustomEvent('novaturk:media-status-update', {
+              detail: {
+                tabId: tab.id,
+                ...media
+              }
+            }));
+          }
+        } catch {}
+      }
+    }, 750);
+
+    return () => clearInterval(interval);
+  }, [tab.id, tab.url]);
+
+  // 🌟 Dinamik Ada'dan Gelen Oynat/Durdur/Sar/Sonraki Komutlarını İlet
+  useEffect(() => {
+    const handleMediaCmd = async (e) => {
+      if (e.detail?.tabId === tab.id && innerRef.current) {
+        const { action, val } = e.detail;
+        try {
+          if (typeof innerRef.current.executeJavaScript === 'function') {
+            await innerRef.current.executeJavaScript(`
+              if (window.__novaturk_mediaControl) {
+                window.__novaturk_mediaControl('${action}', ${JSON.stringify(val)});
+              } else {
+                const v = document.querySelector('video');
+                if (v) {
+                  if ('${action}' === 'toggle') v.paused ? v.play() : v.pause();
+                  else if ('${action}' === 'play') v.play();
+                  else if ('${action}' === 'pause') v.pause();
+                  else if ('${action}' === 'seek') v.currentTime = Number(${JSON.stringify(val)});
+                  else if ('${action}' === 'seekDelta') v.currentTime += Number(${JSON.stringify(val)});
+                  else if ('${action}' === 'next') {
+                    const b = document.querySelector('.ytp-next-button');
+                    if (b) b.click();
+                  } else if ('${action}' === 'prev') {
+                    if (v.currentTime > 3) v.currentTime = 0; else window.history.back();
+                  }
+                }
+              }
+            `);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('novaturk:media-command', handleMediaCmd);
+    return () => window.removeEventListener('novaturk:media-command', handleMediaCmd);
+  }, [tab.id]);
+
   const isElectron = isElectronApp();
   const currentUrl = tab.url || 'https://google.com';
 

@@ -3,7 +3,8 @@ import {
   Zap, Volume2, VolumeX, Camera, Eye, Columns, Copy, Check, 
   ShieldCheck, Sparkles, ChevronDown, ChevronUp, Clock, Flame, 
   ArrowUp, RefreshCw, Move, EyeOff, Play, Pause, Music, 
-  ExternalLink, Search, X, Compass, Globe
+  ExternalLink, Search, X, Compass, Globe, RotateCcw, RotateCw,
+  SkipBack, SkipForward
 } from 'lucide-react';
 import { sound } from '../services/soundService';
 
@@ -165,6 +166,72 @@ export default function DynamicIsland({
     t.type === 'web' && 
     (t.url?.includes('youtube.com') || t.url?.includes('youtu.be') || t.url?.includes('spotify') || t.title?.toLowerCase().includes('youtube'))
   );
+
+  // 🌟 Canlı YouTube Medya Durumu Dinleyicisi
+  const [mediaState, setMediaState] = useState(null);
+
+  useEffect(() => {
+    const handleMediaUpdate = (e) => {
+      if (e.detail) {
+        setMediaState(e.detail);
+      }
+    };
+    window.addEventListener('novaturk:media-status-update', handleMediaUpdate);
+    return () => window.removeEventListener('novaturk:media-status-update', handleMediaUpdate);
+  }, []);
+
+  const formatTime = (seconds) => {
+    if (isNaN(seconds) || seconds < 0) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  // 🌟 Şarkıya / Kapağa Göre Değişen Akışkan Apple Music Cam Mesh Gradienti
+  const getMeshGradient = (title) => {
+    if (!title) {
+      return {
+        gradient: 'radial-gradient(circle at 20% 30%, rgba(225, 29, 72, 0.45) 0%, transparent 60%), radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.4) 0%, transparent 65%), rgba(10, 10, 15, 0.95)',
+        glowColor: 'rgba(225, 29, 72, 0.4)'
+      };
+    }
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) hash = title.charCodeAt(i) + ((hash << 5) - hash);
+    const themes = [
+      {
+        gradient: 'radial-gradient(circle at 15% 25%, rgba(217, 119, 6, 0.55) 0%, transparent 60%), radial-gradient(circle at 85% 75%, rgba(185, 28, 28, 0.45) 0%, transparent 65%), rgba(18, 12, 10, 0.92)',
+        glowColor: 'rgba(217, 119, 6, 0.45)'
+      },
+      {
+        gradient: 'radial-gradient(circle at 20% 20%, rgba(147, 51, 234, 0.55) 0%, transparent 60%), radial-gradient(circle at 80% 80%, rgba(59, 130, 246, 0.45) 0%, transparent 65%), rgba(15, 10, 25, 0.92)',
+        glowColor: 'rgba(147, 51, 234, 0.45)'
+      },
+      {
+        gradient: 'radial-gradient(circle at 25% 25%, rgba(225, 29, 72, 0.6) 0%, transparent 60%), radial-gradient(circle at 75% 75%, rgba(244, 63, 94, 0.4) 0%, transparent 65%), rgba(20, 8, 14, 0.92)',
+        glowColor: 'rgba(225, 29, 72, 0.5)'
+      },
+      {
+        gradient: 'radial-gradient(circle at 20% 30%, rgba(16, 185, 129, 0.5) 0%, transparent 60%), radial-gradient(circle at 80% 70%, rgba(14, 165, 233, 0.45) 0%, transparent 65%), rgba(8, 18, 16, 0.92)',
+        glowColor: 'rgba(16, 185, 129, 0.45)'
+      },
+      {
+        gradient: 'radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.55) 0%, transparent 60%), radial-gradient(circle at 80% 80%, rgba(234, 88, 12, 0.4) 0%, transparent 65%), rgba(20, 12, 8, 0.92)',
+        glowColor: 'rgba(249, 115, 22, 0.45)'
+      }
+    ];
+    return themes[Math.abs(hash) % themes.length];
+  };
+
+  // 🌟 YouTube'a Oynat/Durdur/Sar/Sonraki Komutu Gönder
+  const sendMediaCmd = (action, val) => {
+    sound.playClick();
+    const targetTabId = mediaState?.tabId || activeMediaTab?.id;
+    if (targetTabId) {
+      window.dispatchEvent(new CustomEvent('novaturk:media-command', {
+        detail: { tabId: targetTabId, action, val }
+      }));
+    }
+  };
 
   const handleToggleSpeak = (e) => {
     e.stopPropagation();
@@ -380,52 +447,183 @@ export default function DynamicIsland({
             onClick={(e) => e.stopPropagation()} 
             className="w-full pt-3.5 mt-2.5 border-t border-white/10 space-y-3.5 animate-in fade-in zoom-in-95 duration-200 text-left"
           >
-            {/* 🎵 1. APPLE MUSIC & YOUTUBE CANLI MEDYA ÇALAR KARTI */}
-            {activeMediaTab ? (
-              <div className="p-3 rounded-2xl bg-gradient-to-r from-red-950/40 via-red-900/20 to-black/60 border border-red-500/30 backdrop-blur-xl flex items-center justify-between gap-3 shadow-lg">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center shrink-0">
-                    <Music className="w-4 h-4 text-red-400 animate-pulse" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-bold text-red-300 tracking-tight flex items-center gap-1.5">
-                      <span>YouTube Canlı Müzik</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
-                    </div>
-                    <div className="text-xs font-semibold text-white/95 truncate max-w-[240px]">
-                      {activeMediaTab.title || 'YouTube Arka Plan Oynatma'}
-                    </div>
-                  </div>
-                </div>
+            {/* 🎵 1. APPLE MUSIC & VISIONOS DİNAMİK MESH GRADIENT MÜZİK ÇALAR KARTI */}
+            {activeMediaTab ? (() => {
+              const currentTitle = mediaState?.title || activeMediaTab.title || 'YouTube Çalıyor';
+              const currentArtist = mediaState?.artist || 'YouTube Müzik';
+              const currentThumbnail = mediaState?.thumbnail;
+              const isPaused = mediaState ? mediaState.paused : false;
+              const currentTimeVal = mediaState?.currentTime || 0;
+              const durationVal = mediaState?.duration || 1;
+              const progressPct = Math.min(100, Math.max(0, (currentTimeVal / (durationVal || 1)) * 100));
+              const mesh = getMeshGradient(currentTitle);
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    onClick={() => {
-                      sound.playClick();
-                      if (onSelectTab) onSelectTab(activeMediaTab.id);
-                      setIsExpanded(false);
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-white flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
-                    title="Müziğin Çaldığı Sekmeye Git"
-                  >
-                    <span>Sekmeye Git</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                  {onCloseTab && (
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        onCloseTab(activeMediaTab.id);
+              return (
+                <div 
+                  style={{
+                    background: mesh.gradient,
+                    boxShadow: `0 20px 50px -10px ${mesh.glowColor}, inset 0 1px 2px rgba(255,255,255,0.25)`
+                  }}
+                  className="p-4 rounded-3xl border border-white/20 backdrop-blur-3xl flex flex-col gap-3.5 transition-all duration-500 shadow-2xl relative overflow-hidden"
+                >
+                  {/* Üst Kısım: Albüm Kapağı, Şarkı Adı ve Sekmeye Git */}
+                  <div className="flex items-center justify-between gap-3 relative z-10">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Albüm Kapağı / Thumbnail */}
+                      <div className="relative group/cover shrink-0">
+                        {currentThumbnail ? (
+                          <img 
+                            src={currentThumbnail} 
+                            alt="" 
+                            className="w-14 h-14 rounded-2xl object-cover border border-white/25 shadow-lg shadow-black/60"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center shadow-lg">
+                            <Music className="w-7 h-7 text-white/80" />
+                          </div>
+                        )}
+                        {!isPaused && (
+                          <div className="absolute inset-0 rounded-2xl bg-black/35 backdrop-blur-[1px] flex items-center justify-center">
+                            {/* Animated Mini Equalizer */}
+                            <div className="flex items-end gap-0.5 h-4">
+                              <span className="w-1 h-4 bg-white animate-pulse rounded-full" />
+                              <span className="w-1 h-2 bg-white animate-pulse delay-100 rounded-full" />
+                              <span className="w-1 h-3.5 bg-white animate-pulse delay-200 rounded-full" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Şarkı & Sanatçı Başlığı */}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-white/70 uppercase tracking-widest">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                          <span>YouTube Canlı Çalar</span>
+                        </div>
+                        <h4 className="text-sm font-bold text-white tracking-tight truncate max-w-[230px] drop-shadow-sm">
+                          {currentTitle}
+                        </h4>
+                        <p className="text-xs text-white/75 truncate max-w-[210px] font-medium">
+                          {currentArtist}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Sağ Üst Kısayollar */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          if (onSelectTab) onSelectTab(activeMediaTab.id);
+                          setIsExpanded(false);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
+                        title="YouTube Sekmesine Git"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                      {onCloseTab && (
+                        <button
+                          onClick={() => {
+                            sound.playClick();
+                            onCloseTab(activeMediaTab.id);
+                          }}
+                          className="p-1.5 rounded-xl hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+                          title="Müziği Kapat"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 🌟 İNTERAKTİF SÜRE ÇUBUĞU (SCRUBBER BAR) */}
+                  <div className="flex flex-col gap-1.5 relative z-10 pt-1">
+                    <div 
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const clickX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                        const pct = clickX / rect.width;
+                        const targetTime = Math.floor(pct * (durationVal || 1));
+                        sendMediaCmd('seek', targetTime);
                       }}
-                      className="p-1.5 rounded-xl hover:bg-red-500/20 border border-transparent hover:border-red-500/30 text-slate-400 hover:text-red-300 transition-colors"
-                      title="Müzik Sekmesini Kapat"
+                      className="w-full h-2 rounded-full bg-white/20 hover:h-2.5 transition-all cursor-pointer relative group flex items-center"
+                      title="İstediğin saniyeye sar"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      {/* Dolan Kısım */}
+                      <div 
+                        style={{ width: `${progressPct}%` }}
+                        className="h-full rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)] relative"
+                      >
+                        {/* Apple Scrubber Knob */}
+                        <span className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-md scale-0 group-hover:scale-100 transition-transform -mr-1.5" />
+                      </div>
+                    </div>
+
+                    {/* Zaman Göstergesi */}
+                    <div className="flex items-center justify-between text-[11px] font-mono font-medium text-white/80 px-0.5">
+                      <span>{formatTime(currentTimeVal)}</span>
+                      <span>{formatTime(durationVal)}</span>
+                    </div>
+                  </div>
+
+                  {/* 🌟 APPLE VISIONOS MEDYA KONTROL TUŞLARI */}
+                  <div className="flex items-center justify-center gap-3 relative z-10 pt-1">
+                    {/* 10 Saniye Geri */}
+                    <button
+                      onClick={() => sendMediaCmd('seekDelta', -10)}
+                      className="p-2 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 hover:text-white transition-all hover:scale-110 active:scale-95"
+                      title="10 Saniye Geri Sar"
+                    >
+                      <RotateCcw className="w-4 h-4" />
                     </button>
-                  )}
+
+                    {/* Önceki Şarkı */}
+                    <button
+                      onClick={() => sendMediaCmd('prev')}
+                      className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white hover:text-white transition-all hover:scale-110 active:scale-95"
+                      title="Önceki Şarkı / Başa Sar"
+                    >
+                      <SkipBack className="w-4 h-4" />
+                    </button>
+
+                    {/* ⏯️ BÜYÜK APPLE CAM OYNAT / DURDUR BUTONU */}
+                    <button
+                      onClick={() => sendMediaCmd('toggle')}
+                      style={{
+                        boxShadow: '0 8px 25px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.6)'
+                      }}
+                      className="p-4 rounded-full bg-white text-slate-950 hover:scale-105 active:scale-95 transition-all shadow-xl cursor-pointer flex items-center justify-center group"
+                      title={isPaused ? "Oynat" : "Duraklat"}
+                    >
+                      {isPaused ? (
+                        <Play className="w-5 h-5 fill-current ml-0.5" />
+                      ) : (
+                        <Pause className="w-5 h-5 fill-current" />
+                      )}
+                    </button>
+
+                    {/* ⏭️ SONRAKİ ŞARKIYA GEÇİŞ (BAŞA SARMAMA GARANTİLİ) */}
+                    <button
+                      onClick={() => sendMediaCmd('next')}
+                      className="p-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white hover:text-white transition-all hover:scale-110 active:scale-95"
+                      title="Sonraki Şarkıya Geç"
+                    >
+                      <SkipForward className="w-4 h-4" />
+                    </button>
+
+                    {/* 10 Saniye İleri */}
+                    <button
+                      onClick={() => sendMediaCmd('seekDelta', 10)}
+                      className="p-2 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 hover:text-white transition-all hover:scale-110 active:scale-95"
+                      title="10 Saniye İleri Sar"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
+              );
+            })() : (
               <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between text-xs text-slate-300">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-sky-400" />
