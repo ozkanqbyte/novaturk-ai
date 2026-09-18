@@ -16,7 +16,8 @@ export default function MobileTopBar({
   isVpnActive,
   isDark,
   setIsDark,
-  currentTheme
+  currentTheme,
+  showHomeButton = false
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
@@ -26,25 +27,29 @@ export default function MobileTopBar({
       {/* 🌟 Mobilde Ekranın Sağ Üstünde Yüzen Apple VisionOS Kontrol Kapsülü */}
       <div className="fixed top-2.5 right-3 left-3 z-30 md:hidden flex items-center justify-between pointer-events-none select-none mt-[env(safe-area-inset-top,0px)]">
         
-        {/* Sol: Mini Apple VisionOS NovaTürk Marka Kapsülü */}
-        <button
-          onClick={() => {
-            sound.playClick();
-            if (onHomeClick) onHomeClick();
-          }}
-          style={{
-            boxShadow: '0 4px 20px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2)'
-          }}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/75 border border-white/20 backdrop-blur-2xl text-white active:scale-95 transition-all shadow-lg"
-        >
-          <div 
-            style={{ backgroundColor: `${themeAccent}30`, color: themeAccent }}
-            className="w-4 h-4 rounded-full flex items-center justify-center border border-white/15"
+        {/* Sol: Mini Apple VisionOS NovaTürk Marka Kapsülü (Yalnızca Web/Arama sayfasındayken) */}
+        {showHomeButton ? (
+          <button
+            onClick={() => {
+              sound.playClick();
+              if (onHomeClick) onHomeClick();
+            }}
+            style={{
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.2)'
+            }}
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/75 border border-white/20 backdrop-blur-2xl text-white active:scale-95 transition-all shadow-lg"
           >
-            <Compass className="w-2.5 h-2.5 animate-spin-slow" />
-          </div>
-          <span className="text-[11px] font-bold tracking-tight font-['Outfit',sans-serif]">NovaTürk</span>
-        </button>
+            <div 
+              style={{ backgroundColor: `${themeAccent}30`, color: themeAccent }}
+              className="w-4 h-4 rounded-full flex items-center justify-center border border-white/15"
+            >
+              <Compass className="w-2.5 h-2.5 animate-spin-slow" />
+            </div>
+            <span className="text-[11px] font-bold tracking-tight font-['Outfit',sans-serif]">NovaTürk</span>
+          </button>
+        ) : (
+          <div /> /* Boşluk tutucu */
+        )}
 
         {/* Sağ: Ayarlar & Kontrol Merkezi Butonu */}
         <button

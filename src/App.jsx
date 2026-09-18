@@ -854,9 +854,7 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME BAŞLANGIÇ SAYFASI) */
           /* ============================================================ */
-          <div className={`w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 ${
-            activeTab.isNewTab ? 'pt-8 sm:pt-12' : 'pt-12 sm:pt-20'
-          }`}>
+          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 pt-20 sm:pt-24 md:pt-28">
             <div className="w-full max-w-3xl mx-auto px-4 flex flex-col items-center text-center animate-fadeIn">
               
               {/* 🌟 LOGO: HOME'DA BÜYÜK VE ASİL, YENİ SEKMEDE MİNİMALİST APPLE SAFARI */}
@@ -867,10 +865,8 @@ const isElectronApp = () => {
                 showSubtitle={false} 
               />
 
-              {/* 🔍 Arama Çubuğu (Bir tık aşağıda, ferah ve modern) */}
-              <div className={`w-full max-w-2xl ${
-                activeTab.isNewTab ? 'mt-4 sm:mt-5 mb-8 sm:mb-10' : 'mt-6 sm:mt-8 mb-10 sm:mb-12'
-              }`}>
+              {/* 🔍 Arama Çubuğu (Apple tarzında bir tık aşağıda, ferah ve modern) */}
+              <div className="w-full max-w-2xl mt-7 sm:mt-9 mb-10 sm:mb-12">
                 <SearchBar 
                   onSearch={handleSearch} 
                   isCompact={false} 
@@ -1010,7 +1006,13 @@ const isElectronApp = () => {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         isDark={isDark}
+        setIsDark={setIsDark}
         currentTheme={currentTheme}
+        onSelectTheme={handleSelectTheme}
+        onOpenThemeSelector={() => {
+          setIsSettingsOpen(false);
+          setIsThemeModalOpen(true);
+        }}
       />
 
       {/* Admin Masası Konsolu Modalı */}
@@ -1140,6 +1142,7 @@ const isElectronApp = () => {
         isDark={isDark}
         setIsDark={setIsDark}
         currentTheme={currentTheme}
+        showHomeButton={activeTab.hasSearched || activeTab.type === 'web'}
       />
 
       {/* 📱 APPLE SAFARI iOS FLOATING GLASS ADRES & ARAMA KAPSÜLÜ (ALT BAR) */}
