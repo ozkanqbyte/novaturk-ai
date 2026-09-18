@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Image as ImageIcon, Upload } from 'lucide-react';
+import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Image as ImageIcon, Upload, Clock, TrendingUp } from 'lucide-react';
 import { sound } from '../services/soundService';
+import { API_BASE } from '../services/searchService';
 
 export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme }) {
   const [query, setQuery] = useState(defaultQuery);
@@ -10,16 +11,72 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
   const [lensModalOpen, setLensModalOpen] = useState(false);
   const [lensPreview, setLensPreview] = useState(null);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
 
   const recognitionRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const suggestionAbortRef = useRef(null);
 
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
   useEffect(() => {
     setQuery(defaultQuery);
   }, [defaultQuery]);
+
+  // Autocomplete — yazarken öneri getir (gecikmeli, eski istekler iptal edilir)
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!isFocused || trimmed.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      suggestionAbortRef.current?.abort();
+      const controller = new AbortController();
+      suggestionAbortRef.current = controller;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/suggest?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal });
+        if (!res.ok) return;
+        const data = await res.json();
+        setSuggestions(data.suggestions || []);
+        setActiveSuggestion(-1);
+      } catch {
+        // istek iptal edildi veya sunucuya ulaşılamadı — öneri göstermemek yeterli
+      }
+    }, 150);
+
+    return () => clearTimeout(timer);
+  }, [query, isFocused]);
+
+  const applySuggestion = (text) => {
+    sound.playClick();
+    setQuery(text);
+    setSuggestions([]);
+    setActiveSuggestion(-1);
+    onSearch?.(text);
+  };
+
+  const handleSuggestionKeys = (e) => {
+    if (suggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion(i => (i + 1) % suggestions.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion(i => (i <= 0 ? suggestions.length - 1 : i - 1));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      e.preventDefault();
+      applySuggestion(suggestions[activeSuggestion].text);
+    } else if (e.key === 'Escape') {
+      setSuggestions([]);
+      setActiveSuggestion(-1);
+    }
+  };
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K or '/'
   useEffect(() => {
@@ -173,8 +230,10 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             type="text"
             value={query}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onBlur={() => setTimeout(() => setIsFocused(false), 150)}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSuggestionKeys}
+            autoComplete="off"
             placeholder={
               isListening 
                 ? 'Sizi dinliyorum, konuşun...' 
@@ -272,6 +331,36 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
           </button>
 
         </div>
+
+        {/* 🔎 Autocomplete — yazarken öneriler */}
+        {isFocused && suggestions.length > 0 && (
+          <div
+            className={`absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl border overflow-hidden shadow-2xl backdrop-blur-xl ${
+              isDark ? 'bg-[#0c0f17]/95 border-white/10' : 'bg-white/95 border-black/10'
+            }`}
+          >
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.text}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); applySuggestion(suggestion.text); }}
+                onMouseEnter={() => setActiveSuggestion(index)}
+                className={`w-full px-4 py-2.5 flex items-center gap-3 text-left text-sm transition-colors ${
+                  index === activeSuggestion
+                    ? (isDark ? 'bg-white/10' : 'bg-black/5')
+                    : ''
+                } ${isDark ? 'text-slate-200' : 'text-slate-800'}`}
+              >
+                {suggestion.source === 'gecmis'
+                  ? <Clock className="w-3.5 h-3.5 opacity-50 shrink-0" />
+                  : suggestion.source === 'sozluk'
+                    ? <TrendingUp className="w-3.5 h-3.5 opacity-50 shrink-0" />
+                    : <Search className="w-3.5 h-3.5 opacity-50 shrink-0" />}
+                <span className="truncate">{suggestion.text}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </form>
 
       {/* 📷 NovaLens Görsel Yükleme / Arama Modalı */}
