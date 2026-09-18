@@ -402,37 +402,53 @@ export function suggestSpellingCorrection(query) {
       const exact = db.prepare('SELECT term FROM search_vocab WHERE normalized = ? LIMIT 1').get(normalized);
       if (exact) { corrected.push(word); continue; } // zaten doğru yazılmış
 
-      // Aday havuzunu daraltmak için: aynı harfle başlayan ve uzunluğu yakın terimler
-      const candidates = db.prepare(`
-        SELECT term, normalized, frequency FROM search_vocab
-        WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
-          AND length(normalized) BETWEEN ? AND ?
-        ORDER BY frequency DESC LIMIT 400
-      `).all(normalized, Math.max(3, normalized.length - 2), normalized.length + 2);
-
+      const isShort = normalized.length <= 4;
       let best = null;
-      for (const candidate of candidates) {
-        const distance = editDistance(normalized, candidate.normalized, 2);
-        if (distance > 2) continue;
-        if (!best || distance < best.distance || (distance === best.distance && candidate.frequency > best.frequency)) {
-          best = { term: candidate.term, distance, frequency: candidate.frequency };
+
+      // Kısa kelimelerde ÖNCE ünsüz iskeleti denenir ("drm" → "durumu", "hbr" → "haber").
+      // Sebep: 3 harflik bir kelimede 2 düzenlemeye izin vermek neredeyse her kelimeyi
+      // eşleştirir ("drm" → "den" gibi saçma sonuçlar çıkar), oysa sesli harf düşürme
+      // Türkçe'de kısa yazımların baskın biçimidir.
+      const skeleton = consonantSkeleton(normalized);
+      if (isShort && skeleton.length >= 2) {
+        const skeletonMatch = db.prepare(`
+          SELECT term, normalized, frequency FROM search_vocab
+          WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
+            AND length(normalized) > ?
+          ORDER BY frequency DESC LIMIT 600
+        `).all(normalized, normalized.length).find(c => consonantSkeleton(c.normalized) === skeleton);
+
+        if (skeletonMatch) best = { term: skeletonMatch.term, distance: 1, frequency: skeletonMatch.frequency };
+      }
+
+      // Düzenleme mesafesi: kısa kelimelerde en fazla 1, uzunlarda 2 hata toleransı
+      if (!best) {
+        const maxDistance = isShort ? 1 : 2;
+        const candidates = db.prepare(`
+          SELECT term, normalized, frequency FROM search_vocab
+          WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
+            AND length(normalized) BETWEEN ? AND ?
+          ORDER BY frequency DESC LIMIT 400
+        `).all(normalized, Math.max(3, normalized.length - maxDistance), normalized.length + maxDistance);
+
+        for (const candidate of candidates) {
+          const distance = editDistance(normalized, candidate.normalized, maxDistance);
+          if (distance > maxDistance) continue;
+          if (!best || distance < best.distance || (distance === best.distance && candidate.frequency > best.frequency)) {
+            best = { term: candidate.term, distance, frequency: candidate.frequency };
+          }
         }
       }
 
-      // Sesli harfi atılmış kısaltmalar ("drm" → "durumu", "hbr" → "haber").
-      // Türkçe'de çok yaygın bir yazım alışkanlığı; düzenleme mesafesi bunu yakalayamaz
-      // çünkü 3+ harf eksiktir. Ünsüz iskeletini karşılaştırmak doğru sonucu verir.
-      if (!best) {
-        const skeleton = consonantSkeleton(normalized);
-        if (skeleton.length >= 2) {
-          const skeletonMatch = db.prepare(`
-            SELECT term, normalized, frequency FROM search_vocab
-            WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
-            ORDER BY frequency DESC LIMIT 600
-          `).all(normalized).find(c => consonantSkeleton(c.normalized) === skeleton);
+      // Uzun kelimelerde de sesli harf düşürme olabilir ("universte" değil ama "tknoloji" gibi)
+      if (!best && !isShort && skeleton.length >= 3) {
+        const skeletonMatch = db.prepare(`
+          SELECT term, normalized, frequency FROM search_vocab
+          WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
+          ORDER BY frequency DESC LIMIT 600
+        `).all(normalized).find(c => consonantSkeleton(c.normalized) === skeleton);
 
-          if (skeletonMatch) best = { term: skeletonMatch.term, distance: 3, frequency: skeletonMatch.frequency };
-        }
+        if (skeletonMatch) best = { term: skeletonMatch.term, distance: 2, frequency: skeletonMatch.frequency };
       }
 
       if (best) { corrected.push(best.term); anyCorrection = true; }
