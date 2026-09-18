@@ -232,6 +232,184 @@ app.get('/api/crawl/status', (req, res) => {
   });
 });
 
+// ============================================================================
+// 🛠️ ADMIN PANEL — tüm veri uç noktaları x-admin-key ister (requireAdminKey)
+// ============================================================================
+app.get('/api/admin/overview', requireAdminKey, (req, res) => {
+  try {
+    const siteCount = db.prepare('SELECT COUNT(*) as count FROM sites').get().count;
+    const pageCount = db.prepare('SELECT COUNT(*) as count FROM pages').get().count;
+    const searchCount = db.prepare('SELECT COUNT(*) as count FROM search_logs').get().count;
+    const cacheCount = db.prepare('SELECT COUNT(*) as count FROM query_cache').get().count;
+
+    const topQueries = db.prepare(`
+      SELECT query, COUNT(*) as hits, AVG(results_count) as avg_results, AVG(execution_ms) as avg_ms
+      FROM search_logs GROUP BY query ORDER BY hits DESC LIMIT 15
+    `).all();
+
+    const zeroResultQueries = db.prepare(`
+      SELECT query, searched_at FROM search_logs WHERE results_count = 0
+      ORDER BY searched_at DESC LIMIT 15
+    `).all();
+
+    const recentSearches = db.prepare(`
+      SELECT query, results_count, execution_ms, searched_at FROM search_logs
+      ORDER BY searched_at DESC LIMIT 20
+    `).all();
+
+    const avgLatency = db.prepare('SELECT AVG(execution_ms) as avg_ms FROM search_logs').get();
+
+    let dbSizeBytes = null;
+    try {
+      const dbFilePath = path.join(__dirname, '../database/novaturk.db');
+      if (fs.existsSync(dbFilePath)) dbSizeBytes = fs.statSync(dbFilePath).size;
+    } catch {}
+
+    res.json({
+      success: true,
+      generatedAt: new Date().toISOString(),
+      indexHealth: {
+        totalSites: siteCount,
+        totalPages: pageCount,
+        dbSizeBytes
+      },
+      crawlerHealth: crawlerState,
+      cache: getCacheStats(),
+      queryAnalytics: {
+        totalSearches: searchCount,
+        cachedQueries: cacheCount,
+        avgLatencyMs: avgLatency?.avg_ms ? Number(avgLatency.avg_ms.toFixed(2)) : null,
+        topQueries,
+        zeroResultQueries,
+        recentSearches
+      },
+      infrastructure: {
+        nodeVersion: process.version,
+        uptimeSeconds: Math.floor(process.uptime()),
+        memoryUsageMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+        env: process.env.NODE_ENV || 'development'
+      },
+      security: {
+        adminKeyIsEnvConfigured: !!process.env.ADMIN_API_KEY,
+        rateLimitGeneral: '120/dk',
+        rateLimitCrawl: '10/dk'
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin paneli arayüzü — sayfanın kendisi herkese açık ama içindeki HİÇBİR veri
+// x-admin-key olmadan yüklenmiyor (yukarıdaki /api/admin/overview korumalı).
+app.get('/admin', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NovaTürk AI — Admin Panel</title>
+<style>
+  * { box-sizing: border-box; }
+  body { background:#06080e; color:#e2e8f0; font-family: system-ui, sans-serif; margin:0; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:#64748b; font-size:12px; margin-bottom:20px; }
+  .key-bar { display:flex; gap:8px; margin-bottom:24px; }
+  input { flex:1; background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:10px 14px; border-radius:10px; font-family:monospace; font-size:13px; }
+  button { background:#0284c7; color:#fff; border:none; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; }
+  button:hover { background:#0ea5e9; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:24px; }
+  .card { background:#0f172a; border:1px solid #1e293b; border-radius:14px; padding:16px; }
+  .card .label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; }
+  .card .value { font-size:26px; font-weight:800; margin-top:4px; }
+  section { margin-bottom:28px; }
+  section h2 { font-size:14px; color:#38bdf8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #1e293b; }
+  th { color:#64748b; font-weight:600; font-size:11px; text-transform:uppercase; }
+  .err { color:#f87171; font-size:13px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; }
+  .badge.ok { background:rgba(16,185,129,0.15); color:#10b981; }
+  .badge.warn { background:rgba(245,158,11,0.15); color:#f59e0b; }
+</style>
+</head>
+<body>
+  <h1>🛠️ NovaTürk AI — Admin Panel</h1>
+  <p class="sub">Bu sayfa herkese açık ama hiçbir veri x-admin-key olmadan yüklenmez.</p>
+
+  <div class="key-bar">
+    <input id="adminKey" type="password" placeholder="x-admin-key değerini gir (sunucu logunda veya ADMIN_API_KEY env var'da)" />
+    <button onclick="loadOverview()">Yükle</button>
+  </div>
+
+  <div id="content"></div>
+
+  <script>
+    const KEY_STORAGE = 'novaturk_admin_key';
+    document.getElementById('adminKey').value = localStorage.getItem(KEY_STORAGE) || '';
+
+    async function loadOverview() {
+      const key = document.getElementById('adminKey').value.trim();
+      const content = document.getElementById('content');
+      if (!key) { content.innerHTML = '<p class="err">Anahtar gerekli.</p>'; return; }
+      localStorage.setItem(KEY_STORAGE, key);
+      content.innerHTML = '<p>Yükleniyor...</p>';
+
+      try {
+        const res = await fetch('/api/admin/overview', { headers: { 'x-admin-key': key } });
+        if (res.status === 401) { content.innerHTML = '<p class="err">Yetkisiz — anahtar yanlış.</p>'; return; }
+        const d = await res.json();
+        if (!d.success) { content.innerHTML = '<p class="err">Hata: ' + (d.error || 'bilinmiyor') + '</p>'; return; }
+
+        const rows = (arr, cols) => arr.map(r => '<tr>' + cols.map(c => '<td>' + (r[c] ?? '-') + '</td>').join('') + '</tr>').join('');
+
+        content.innerHTML = \`
+          <div class="grid">
+            <div class="card"><div class="label">Toplam Site</div><div class="value">\${d.indexHealth.totalSites}</div></div>
+            <div class="card"><div class="label">Toplam Sayfa</div><div class="value">\${d.indexHealth.totalPages}</div></div>
+            <div class="card"><div class="label">Toplam Arama</div><div class="value">\${d.queryAnalytics.totalSearches}</div></div>
+            <div class="card"><div class="label">Önbellek Kayıt</div><div class="value">\${d.queryAnalytics.cachedQueries}</div></div>
+            <div class="card"><div class="label">Ort. Gecikme</div><div class="value">\${d.queryAnalytics.avgLatencyMs ?? '-'} ms</div></div>
+            <div class="card"><div class="label">Bellek Kullanımı</div><div class="value">\${d.infrastructure.memoryUsageMB} MB</div></div>
+            <div class="card"><div class="label">Uptime</div><div class="value">\${Math.floor(d.infrastructure.uptimeSeconds/60)} dk</div></div>
+            <div class="card"><div class="label">Crawler</div><div class="value">\${d.crawlerHealth.isRunning ? '<span class="badge ok">Çalışıyor</span>' : '<span class="badge warn">Boşta</span>'}</div></div>
+          </div>
+
+          <section>
+            <h2>Güvenlik Durumu</h2>
+            <p>Admin anahtarı env var ile ayarlı: \${d.security.adminKeyIsEnvConfigured ? '<span class="badge ok">Evet</span>' : '<span class="badge warn">Hayır (her restartta değişir)</span>'}
+            &nbsp;·&nbsp; Genel limit: \${d.security.rateLimitGeneral} &nbsp;·&nbsp; Crawl limit: \${d.security.rateLimitCrawl}</p>
+          </section>
+
+          <section>
+            <h2>En Çok Aranan Sorgular</h2>
+            <table><thead><tr><th>Sorgu</th><th>Kaç Kez</th><th>Ort. Sonuç</th><th>Ort. ms</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.topQueries, ['query','hits','avg_results','avg_ms'])}</tbody></table>
+          </section>
+
+          <section>
+            <h2>Sıfır Sonuç Veren Sorgular (Zero Result Queries)</h2>
+            <table><thead><tr><th>Sorgu</th><th>Tarih</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.zeroResultQueries, ['query','searched_at'])}</tbody></table>
+          </section>
+
+          <section>
+            <h2>Son Aramalar</h2>
+            <table><thead><tr><th>Sorgu</th><th>Sonuç</th><th>ms</th><th>Tarih</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.recentSearches, ['query','results_count','execution_ms','searched_at'])}</tbody></table>
+          </section>
+        \`;
+      } catch (err) {
+        content.innerHTML = '<p class="err">Bağlantı hatası: ' + err.message + '</p>';
+      }
+    }
+
+    if (document.getElementById('adminKey').value) loadOverview();
+  </script>
+</body>
+</html>`);
+});
+
 // 2. Siteler Listesi
 app.get('/api/sites', (req, res) => {
   try {
