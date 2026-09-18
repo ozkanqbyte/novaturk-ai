@@ -222,6 +222,14 @@ app.get('/api/proxy', async (req, res) => {
         return `${attr}="${origin}/${path}"`;
       });
 
+      // Next.js SPA hidrasyon scriptlerinin proxy ortamında 404 tetiklemesini engelle (SSR HTML'i saf olarak koru)
+      html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, (tag) => {
+        if (tag.includes('_next/static/chunks')) {
+          return '<!-- [NovaTurk] next chunk disarmed to preserve full SSR content -->';
+        }
+        return tag;
+      });
+
       const proxyHookScript = `
         <script>
           (function() {
