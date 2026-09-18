@@ -1,8 +1,16 @@
 import { db } from './db.js';
 
+// Admin panelinden yasaklanmış bir domain mi? (blocked_domains tablosu)
+export function isDomainBlocked(hostname) {
+  return !!db.prepare('SELECT 1 FROM blocked_domains WHERE domain = ?').get(hostname);
+}
+
 // URL'nin gerçek hostname'ine göre doğru site_id'yi bulur, yoksa otomatik keşif olarak oluşturur.
 // (Önceden her keşfedilen sayfa, hangi siteden geldiğine bakılmaksızın site_id=1'e yazılıyordu.)
+// Yasaklı bir domain ise null döner — çağıran taraf bu sayfayı index'e eklememelidir.
 export function getOrCreateSiteId(hostname) {
+  if (isDomainBlocked(hostname)) return null;
+
   const existing = db.prepare('SELECT id FROM sites WHERE domain = ?').get(hostname);
   if (existing) return existing.id;
 
@@ -124,6 +132,11 @@ export function extractLinks(html, baseUrl) {
 export async function crawlSite(siteUrl, explicitSiteId = null) {
   try {
     const parsedUrl = new URL(siteUrl);
+
+    if (isDomainBlocked(parsedUrl.hostname)) {
+      return { success: false, url: siteUrl, error: 'Bu domain admin panelinden yasaklanmış', links: [] };
+    }
+
     const disallowed = await getDisallowedPaths(parsedUrl.origin);
     if (!isPathAllowed(parsedUrl.pathname, disallowed)) {
       return { success: false, url: siteUrl, error: 'robots.txt tarafından engellendi', links: [] };

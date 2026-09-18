@@ -113,9 +113,32 @@ export async function ingestRssFeed(feed, maxItems = 15) {
   }
 }
 
-export async function ingestAllNewsFeeds() {
-  const results = [];
+// İlk çalıştırmada sabit listeyi rss_sources tablosuna aktarır (sadece tablo boşsa).
+// Bundan sonra kaynak listesi admin panelinden yönetilebilir (DB'den okunur).
+function seedRssSourcesIfEmpty() {
+  const count = db.prepare('SELECT COUNT(*) as count FROM rss_sources').get().count;
+  if (count > 0) return;
+
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO rss_sources (url, name, domain, category, is_active)
+    VALUES (?, ?, ?, ?, 1)
+  `);
   for (const feed of NEWS_RSS_FEEDS) {
+    insert.run(feed.url, feed.name, feed.domain, feed.category);
+  }
+}
+
+export function getActiveRssSources() {
+  seedRssSourcesIfEmpty();
+  const blockedDomains = new Set(db.prepare('SELECT domain FROM blocked_domains').all().map(r => r.domain));
+  return db.prepare('SELECT * FROM rss_sources WHERE is_active = 1').all()
+    .filter(s => !blockedDomains.has(s.domain));
+}
+
+export async function ingestAllNewsFeeds() {
+  const sources = getActiveRssSources();
+  const results = [];
+  for (const feed of sources) {
     results.push(await ingestRssFeed(feed));
     await new Promise(resolve => setTimeout(resolve, 300)); // kaynak sunucularını yormamak için kısa nefes
   }

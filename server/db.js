@@ -149,10 +149,55 @@ export function initDatabase() {
       results_json TEXT NOT NULL,
       cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS blocked_domains (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      domain TEXT UNIQUE NOT NULL,
+      reason TEXT,
+      blocked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS complaints (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      detail TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      target TEXT,
+      detail TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS rss_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Haber',
+      is_active INTEGER DEFAULT 1,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // İlk Kurulumda 50 Türk Sitesini Veritabanına Yükle
   seedInitialSites();
+}
+
+export function logAdminAction(action, target, detail) {
+  try {
+    db.prepare('INSERT INTO admin_audit_log (action, target, detail) VALUES (?, ?, ?)').run(
+      action, target || null, detail ? JSON.stringify(detail) : null
+    );
+  } catch (err) {
+    console.warn('[Audit Log] Yazma hatası:', err.message);
+  }
 }
 
 function seedInitialSites() {

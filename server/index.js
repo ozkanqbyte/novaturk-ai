@@ -6,9 +6,9 @@ import fs from 'fs';
 import crypto from 'crypto';
 import dns from 'dns/promises';
 import { rateLimit } from 'express-rate-limit';
-import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats } from './db.js';
-import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId } from './crawler.js';
-import { ingestAllNewsFeeds } from './rssFeeds.js';
+import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction } from './db.js';
+import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
+import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -259,6 +259,26 @@ app.get('/api/admin/overview', requireAdminKey, (req, res) => {
 
     const avgLatency = db.prepare('SELECT AVG(execution_ms) as avg_ms FROM search_logs').get();
 
+    // Son 24 saat için saatlik arama hacmi (basit trend grafiği için)
+    const hourlyVolume = db.prepare(`
+      SELECT strftime('%Y-%m-%d %H:00', searched_at) as hour, COUNT(*) as count
+      FROM search_logs
+      WHERE searched_at >= datetime('now', '-24 hours')
+      GROUP BY hour ORDER BY hour ASC
+    `).all();
+
+    const topSites = db.prepare(`
+      SELECT s.domain, s.name, COUNT(p.id) as page_count
+      FROM sites s LEFT JOIN pages p ON p.site_id = s.id
+      GROUP BY s.id ORDER BY page_count DESC LIMIT 15
+    `).all();
+
+    const blockedDomains = db.prepare('SELECT * FROM blocked_domains ORDER BY blocked_at DESC').all();
+    const rssSources = db.prepare('SELECT * FROM rss_sources ORDER BY added_at DESC').all();
+    const openComplaints = db.prepare("SELECT * FROM complaints WHERE status = 'open' ORDER BY created_at DESC LIMIT 20").all();
+    const complaintCounts = db.prepare("SELECT status, COUNT(*) as count FROM complaints GROUP BY status").all();
+    const auditLog = db.prepare('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT 30').all();
+
     let dbSizeBytes = null;
     try {
       const dbFilePath = path.join(__dirname, '../database/novaturk.db');
@@ -281,8 +301,17 @@ app.get('/api/admin/overview', requireAdminKey, (req, res) => {
         avgLatencyMs: avgLatency?.avg_ms ? Number(avgLatency.avg_ms.toFixed(2)) : null,
         topQueries,
         zeroResultQueries,
-        recentSearches
+        recentSearches,
+        hourlyVolume
       },
+      topSites,
+      moderation: {
+        blockedDomains,
+        rssSources,
+        openComplaints,
+        complaintCounts
+      },
+      auditLog,
       infrastructure: {
         nodeVersion: process.version,
         uptimeSeconds: Math.floor(process.uptime()),
@@ -300,6 +329,182 @@ app.get('/api/admin/overview', requireAdminKey, (req, res) => {
   }
 });
 
+// ---- Site / Sayfa Yönetimi ----
+app.delete('/api/admin/sites/:id', requireAdminKey, (req, res) => {
+  try {
+    const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(req.params.id);
+    if (!site) return res.status(404).json({ success: false, error: 'Site bulunamadı' });
+    db.prepare('DELETE FROM pages WHERE site_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM sites WHERE id = ?').run(req.params.id);
+    logAdminAction('delete_site', site.domain, { id: req.params.id, name: site.name });
+    res.json({ success: true, deleted: site.domain });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/admin/pages/:id', requireAdminKey, (req, res) => {
+  try {
+    const page = db.prepare('SELECT * FROM pages WHERE id = ?').get(req.params.id);
+    if (!page) return res.status(404).json({ success: false, error: 'Sayfa bulunamadı' });
+    db.prepare('DELETE FROM pages WHERE id = ?').run(req.params.id);
+    logAdminAction('delete_page', page.url, { id: req.params.id, title: page.title });
+    res.json({ success: true, deleted: page.url });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Domain Yasaklama ----
+app.get('/api/admin/domains/blocked', requireAdminKey, (req, res) => {
+  res.json({ success: true, domains: db.prepare('SELECT * FROM blocked_domains ORDER BY blocked_at DESC').all() });
+});
+
+app.post('/api/admin/domains/block', requireAdminKey, (req, res) => {
+  const { domain, reason } = req.body || {};
+  if (!domain) return res.status(400).json({ success: false, error: 'domain gerekli' });
+  try {
+    const cleanDomain = domain.trim().toLowerCase();
+    db.prepare('INSERT OR IGNORE INTO blocked_domains (domain, reason) VALUES (?, ?)').run(cleanDomain, reason || null);
+    // Yasaklanan domain'e ait mevcut sayfaları da index'ten temizle
+    const site = db.prepare('SELECT id FROM sites WHERE domain = ?').get(cleanDomain);
+    let removedPages = 0;
+    if (site) {
+      removedPages = db.prepare('DELETE FROM pages WHERE site_id = ?').run(site.id).changes;
+      db.prepare('DELETE FROM sites WHERE id = ?').run(site.id);
+    }
+    logAdminAction('block_domain', cleanDomain, { reason, removedPages });
+    res.json({ success: true, domain: cleanDomain, removedPages });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/admin/domains/block/:id', requireAdminKey, (req, res) => {
+  try {
+    const row = db.prepare('SELECT * FROM blocked_domains WHERE id = ?').get(req.params.id);
+    if (!row) return res.status(404).json({ success: false, error: 'Kayıt bulunamadı' });
+    db.prepare('DELETE FROM blocked_domains WHERE id = ?').run(req.params.id);
+    logAdminAction('unblock_domain', row.domain, {});
+    res.json({ success: true, unblocked: row.domain });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- RSS Kaynak Yönetimi ----
+app.get('/api/admin/rss-sources', requireAdminKey, (req, res) => {
+  res.json({ success: true, sources: db.prepare('SELECT * FROM rss_sources ORDER BY added_at DESC').all() });
+});
+
+app.post('/api/admin/rss-sources', requireAdminKey, (req, res) => {
+  const { url, name, domain, category } = req.body || {};
+  if (!url || !name || !domain) return res.status(400).json({ success: false, error: 'url, name, domain gerekli' });
+  try {
+    db.prepare(`
+      INSERT INTO rss_sources (url, name, domain, category, is_active) VALUES (?, ?, ?, ?, 1)
+    `).run(url, name, domain, category || 'Haber');
+    logAdminAction('add_rss_source', domain, { url, name, category });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/admin/rss-sources/:id', requireAdminKey, (req, res) => {
+  const { isActive } = req.body || {};
+  try {
+    db.prepare('UPDATE rss_sources SET is_active = ? WHERE id = ?').run(isActive ? 1 : 0, req.params.id);
+    logAdminAction('toggle_rss_source', String(req.params.id), { isActive });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/admin/rss-sources/:id', requireAdminKey, (req, res) => {
+  try {
+    db.prepare('DELETE FROM rss_sources WHERE id = ?').run(req.params.id);
+    logAdminAction('delete_rss_source', String(req.params.id), {});
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Crawler Tetikleyicisi (mevcut fonksiyonu admin panelinden çağırır) ----
+app.post('/api/admin/crawl/trigger', requireAdminKey, async (req, res) => {
+  try {
+    const { maxPages = 30, concurrency = 3 } = req.body || {};
+    const siteRows = db.prepare('SELECT url FROM sites LIMIT 50').all();
+    const startUrls = siteRows.map(s => s.url).filter(Boolean);
+    logAdminAction('trigger_crawl', null, { maxPages, concurrency });
+    const result = await runBatchCrawler(startUrls, Math.min(maxPages, 200), Math.min(concurrency, 5));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/admin/rss/trigger', requireAdminKey, async (req, res) => {
+  try {
+    logAdminAction('trigger_rss', null, {});
+    const results = await ingestAllNewsFeeds();
+    const totalInserted = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
+    res.json({ success: true, totalInserted, feeds: results });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Şikayet (Complaint) Sistemi ----
+// Herkese açık: bir URL hakkında şikayet/kaldırma talebi gönderme (genel rate limit zaten uygulanıyor)
+app.post('/api/report', (req, res) => {
+  const { url, reason, detail } = req.body || {};
+  if (!url || !reason) return res.status(400).json({ success: false, error: 'url ve reason gerekli' });
+  try {
+    db.prepare('INSERT INTO complaints (url, reason, detail) VALUES (?, ?, ?)').run(
+      String(url).slice(0, 2000), String(reason).slice(0, 200), detail ? String(detail).slice(0, 2000) : null
+    );
+    res.json({ success: true, message: 'Şikayetiniz alındı, incelenecektir.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/admin/complaints', requireAdminKey, (req, res) => {
+  const status = req.query.status || 'open';
+  const rows = status === 'all'
+    ? db.prepare('SELECT * FROM complaints ORDER BY created_at DESC').all()
+    : db.prepare('SELECT * FROM complaints WHERE status = ? ORDER BY created_at DESC').all(status);
+  res.json({ success: true, complaints: rows });
+});
+
+app.post('/api/admin/complaints/:id/resolve', requireAdminKey, (req, res) => {
+  const { removePage } = req.body || {};
+  try {
+    const complaint = db.prepare('SELECT * FROM complaints WHERE id = ?').get(req.params.id);
+    if (!complaint) return res.status(404).json({ success: false, error: 'Şikayet bulunamadı' });
+
+    db.prepare("UPDATE complaints SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+
+    let pageRemoved = false;
+    if (removePage) {
+      const result = db.prepare('DELETE FROM pages WHERE url = ?').run(complaint.url);
+      pageRemoved = result.changes > 0;
+    }
+    logAdminAction('resolve_complaint', complaint.url, { id: req.params.id, pageRemoved });
+    res.json({ success: true, pageRemoved });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ---- Audit Log ----
+app.get('/api/admin/audit-log', requireAdminKey, (req, res) => {
+  res.json({ success: true, entries: db.prepare('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT 100').all() });
+});
+
 // Admin paneli arayüzü — sayfanın kendisi herkese açık ama içindeki HİÇBİR veri
 // x-admin-key olmadan yüklenmiyor (yukarıdaki /api/admin/overview korumalı).
 app.get('/admin', (req, res) => {
@@ -311,97 +516,330 @@ app.get('/admin', (req, res) => {
 <title>NovaTürk AI — Admin Panel</title>
 <style>
   * { box-sizing: border-box; }
-  body { background:#06080e; color:#e2e8f0; font-family: system-ui, sans-serif; margin:0; padding:24px; }
-  h1 { font-size:20px; margin-bottom:4px; }
-  .sub { color:#64748b; font-size:12px; margin-bottom:20px; }
-  .key-bar { display:flex; gap:8px; margin-bottom:24px; }
-  input { flex:1; background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:10px 14px; border-radius:10px; font-family:monospace; font-size:13px; }
-  button { background:#0284c7; color:#fff; border:none; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; }
-  button:hover { background:#0ea5e9; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:24px; }
-  .card { background:#0f172a; border:1px solid #1e293b; border-radius:14px; padding:16px; }
-  .card .label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.5px; }
-  .card .value { font-size:26px; font-weight:800; margin-top:4px; }
-  section { margin-bottom:28px; }
-  section h2 { font-size:14px; color:#38bdf8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid #1e293b; }
-  th { color:#64748b; font-weight:600; font-size:11px; text-transform:uppercase; }
+  body {
+    background: radial-gradient(circle at 20% -10%, rgba(56,189,248,0.12), transparent 45%),
+                radial-gradient(circle at 90% 10%, rgba(99,102,241,0.10), transparent 40%),
+                #05070d;
+    color:#e2e8f0; font-family: 'Segoe UI', system-ui, sans-serif; margin:0; padding:28px; min-height:100vh;
+  }
+  h1 { font-size:21px; margin:0 0 2px; font-weight:800; letter-spacing:-0.3px; }
+  .sub { color:#64748b; font-size:12px; margin-bottom:22px; }
+  .key-bar { display:flex; gap:10px; margin-bottom:24px; }
+  input, select, textarea {
+    background: rgba(15,23,42,0.6); backdrop-filter: blur(12px); border:1px solid rgba(148,163,184,0.18);
+    color:#e2e8f0; padding:10px 14px; border-radius:12px; font-size:13px;
+  }
+  input#adminKey { flex:1; font-family:monospace; }
+  button {
+    background: linear-gradient(135deg, #0284c7, #6366f1); color:#fff; border:none; padding:10px 18px;
+    border-radius:12px; font-weight:700; cursor:pointer; font-size:13px; transition: transform .15s, box-shadow .15s;
+    box-shadow: 0 4px 16px rgba(2,132,199,0.25);
+  }
+  button:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(2,132,199,0.4); }
+  button.danger { background: linear-gradient(135deg, #dc2626, #b91c1c); box-shadow:0 4px 16px rgba(220,38,38,0.25); }
+  button.ghost { background: rgba(148,163,184,0.1); box-shadow:none; }
+  button.sm { padding:5px 10px; font-size:11px; border-radius:8px; }
+
+  .tabs { display:flex; gap:6px; margin-bottom:22px; flex-wrap:wrap; border-bottom:1px solid rgba(148,163,184,0.12); padding-bottom:10px; }
+  .tab-btn {
+    background: rgba(15,23,42,0.4); border:1px solid rgba(148,163,184,0.15); color:#94a3b8;
+    padding:8px 16px; border-radius:10px; font-size:12px; font-weight:600; cursor:pointer; box-shadow:none;
+  }
+  .tab-btn.active { background: linear-gradient(135deg, rgba(56,189,248,0.18), rgba(99,102,241,0.18)); color:#fff; border-color: rgba(56,189,248,0.4); }
+  .tab-panel { display:none; } .tab-panel.active { display:block; }
+
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:26px; }
+  .card {
+    background: rgba(15,23,42,0.55); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border:1px solid rgba(148,163,184,0.15); border-radius:16px; padding:18px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  .card .label { font-size:10.5px; color:#64748b; text-transform:uppercase; letter-spacing:0.6px; }
+  .card .value { font-size:28px; font-weight:800; margin-top:6px; }
+
+  section { margin-bottom:26px; }
+  section h2 { font-size:13px; color:#38bdf8; text-transform:uppercase; letter-spacing:0.6px; margin-bottom:12px; font-weight:700; }
+  .panel-box {
+    background: rgba(15,23,42,0.5); backdrop-filter: blur(14px); border:1px solid rgba(148,163,184,0.14);
+    border-radius:16px; padding:18px;
+  }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid rgba(148,163,184,0.1); }
+  th { color:#64748b; font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:0.4px; }
+  tr:hover td { background: rgba(56,189,248,0.04); }
   .err { color:#f87171; font-size:13px; }
-  .badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700; }
+  .badge { display:inline-block; padding:3px 9px; border-radius:8px; font-size:10.5px; font-weight:700; }
   .badge.ok { background:rgba(16,185,129,0.15); color:#10b981; }
   .badge.warn { background:rgba(245,158,11,0.15); color:#f59e0b; }
+  .badge.err { background:rgba(239,68,68,0.15); color:#ef4444; }
+  .bar-row { display:flex; align-items:center; gap:10px; margin-bottom:8px; font-size:12px; }
+  .bar-label { width:160px; flex-shrink:0; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .bar-track { flex:1; background:rgba(148,163,184,0.08); border-radius:6px; height:18px; overflow:hidden; }
+  .bar-fill { height:100%; background:linear-gradient(90deg, #0284c7, #38bdf8); border-radius:6px; }
+  .bar-val { width:36px; text-align:right; color:#e2e8f0; font-weight:700; }
+  .inline-form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  .inline-form input { flex:1; min-width:140px; }
+  .toast { position:fixed; bottom:20px; right:20px; background:#0f172a; border:1px solid rgba(56,189,248,0.4); padding:12px 18px; border-radius:12px; font-size:13px; box-shadow:0 8px 24px rgba(0,0,0,0.4); }
 </style>
 </head>
 <body>
   <h1>🛠️ NovaTürk AI — Admin Panel</h1>
-  <p class="sub">Bu sayfa herkese açık ama hiçbir veri x-admin-key olmadan yüklenmez.</p>
+  <p class="sub">Bu sayfa herkese açık ama hiçbir veri/aksiyon x-admin-key olmadan çalışmaz.</p>
 
   <div class="key-bar">
     <input id="adminKey" type="password" placeholder="x-admin-key değerini gir (sunucu logunda veya ADMIN_API_KEY env var'da)" />
     <button onclick="loadOverview()">Yükle</button>
   </div>
 
+  <div class="tabs" id="tabs" style="display:none">
+    <button class="tab-btn active" data-tab="overview">📊 Genel Bakış</button>
+    <button class="tab-btn" data-tab="sites">🌐 Siteler</button>
+    <button class="tab-btn" data-tab="rss">📰 RSS Kaynakları</button>
+    <button class="tab-btn" data-tab="blocked">🚫 Yasaklı Domainler</button>
+    <button class="tab-btn" data-tab="complaints">⚠️ Şikayetler</button>
+    <button class="tab-btn" data-tab="audit">🧾 Audit Log</button>
+  </div>
+
   <div id="content"></div>
+  <div id="toastHost"></div>
 
   <script>
     const KEY_STORAGE = 'novaturk_admin_key';
+    let LAST_DATA = null;
     document.getElementById('adminKey').value = localStorage.getItem(KEY_STORAGE) || '';
+
+    function toast(msg, isErr) {
+      const t = document.createElement('div');
+      t.className = 'toast'; t.style.borderColor = isErr ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.4)';
+      t.textContent = msg;
+      document.getElementById('toastHost').appendChild(t);
+      setTimeout(() => t.remove(), 3200);
+    }
+
+    function authHeaders() {
+      return { 'x-admin-key': document.getElementById('adminKey').value.trim(), 'Content-Type': 'application/json' };
+    }
+
+    async function apiCall(url, options = {}) {
+      const res = await fetch(url, { ...options, headers: { ...authHeaders(), ...(options.headers || {}) } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    }
+
+    const rows = (arr, cols, extra) => (arr || []).map(r => '<tr>' + cols.map(c => '<td>' + (r[c] ?? '-') + '</td>').join('') + (extra ? extra(r) : '') + '</tr>').join('') || '<tr><td colspan="10" style="color:#475569">Kayıt yok</td></tr>';
+
+    function barChart(items, labelKey, valueKey) {
+      if (!items || items.length === 0) return '<p style="color:#475569;font-size:12px">Veri yok</p>';
+      const max = Math.max(...items.map(i => i[valueKey] || 0), 1);
+      return items.map(i => \`
+        <div class="bar-row">
+          <div class="bar-label" title="\${i[labelKey]}">\${i[labelKey]}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:\${Math.max(4, (i[valueKey]/max)*100)}%"></div></div>
+          <div class="bar-val">\${i[valueKey]}</div>
+        </div>\`).join('');
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+    }
+    document.getElementById('tabs').addEventListener('click', e => {
+      const btn = e.target.closest('.tab-btn');
+      if (btn) switchTab(btn.dataset.tab);
+    });
 
     async function loadOverview() {
       const key = document.getElementById('adminKey').value.trim();
       const content = document.getElementById('content');
       if (!key) { content.innerHTML = '<p class="err">Anahtar gerekli.</p>'; return; }
       localStorage.setItem(KEY_STORAGE, key);
-      content.innerHTML = '<p>Yükleniyor...</p>';
+      content.innerHTML = '<p style="color:#64748b">Yükleniyor...</p>';
 
       try {
-        const res = await fetch('/api/admin/overview', { headers: { 'x-admin-key': key } });
-        if (res.status === 401) { content.innerHTML = '<p class="err">Yetkisiz — anahtar yanlış.</p>'; return; }
-        const d = await res.json();
-        if (!d.success) { content.innerHTML = '<p class="err">Hata: ' + (d.error || 'bilinmiyor') + '</p>'; return; }
+        const d = await apiCall('/api/admin/overview');
+        LAST_DATA = d;
+        document.getElementById('tabs').style.display = 'flex';
+        render(d);
+      } catch (err) {
+        content.innerHTML = '<p class="err">' + err.message + '</p>';
+      }
+    }
 
-        const rows = (arr, cols) => arr.map(r => '<tr>' + cols.map(c => '<td>' + (r[c] ?? '-') + '</td>').join('') + '</tr>').join('');
-
-        content.innerHTML = \`
+    function render(d) {
+      const content = document.getElementById('content');
+      content.innerHTML = \`
+        <div id="tab-overview" class="tab-panel active">
           <div class="grid">
             <div class="card"><div class="label">Toplam Site</div><div class="value">\${d.indexHealth.totalSites}</div></div>
             <div class="card"><div class="label">Toplam Sayfa</div><div class="value">\${d.indexHealth.totalPages}</div></div>
             <div class="card"><div class="label">Toplam Arama</div><div class="value">\${d.queryAnalytics.totalSearches}</div></div>
             <div class="card"><div class="label">Önbellek Kayıt</div><div class="value">\${d.queryAnalytics.cachedQueries}</div></div>
             <div class="card"><div class="label">Ort. Gecikme</div><div class="value">\${d.queryAnalytics.avgLatencyMs ?? '-'} ms</div></div>
-            <div class="card"><div class="label">Bellek Kullanımı</div><div class="value">\${d.infrastructure.memoryUsageMB} MB</div></div>
+            <div class="card"><div class="label">Bellek</div><div class="value">\${d.infrastructure.memoryUsageMB} MB</div></div>
             <div class="card"><div class="label">Uptime</div><div class="value">\${Math.floor(d.infrastructure.uptimeSeconds/60)} dk</div></div>
             <div class="card"><div class="label">Crawler</div><div class="value">\${d.crawlerHealth.isRunning ? '<span class="badge ok">Çalışıyor</span>' : '<span class="badge warn">Boşta</span>'}</div></div>
           </div>
 
           <section>
+            <div class="inline-form">
+              <button onclick="triggerAction('/api/admin/crawl/trigger', {maxPages:30,concurrency:3}, 'Tarama başlatıldı')">🕷️ Crawler Başlat</button>
+              <button onclick="triggerAction('/api/admin/rss/trigger', {}, 'RSS toplama tamamlandı')">📰 RSS Şimdi Topla</button>
+              <button class="ghost" onclick="loadOverview()">🔄 Yenile</button>
+            </div>
+          </section>
+
+          <section>
             <h2>Güvenlik Durumu</h2>
-            <p>Admin anahtarı env var ile ayarlı: \${d.security.adminKeyIsEnvConfigured ? '<span class="badge ok">Evet</span>' : '<span class="badge warn">Hayır (her restartta değişir)</span>'}
-            &nbsp;·&nbsp; Genel limit: \${d.security.rateLimitGeneral} &nbsp;·&nbsp; Crawl limit: \${d.security.rateLimitCrawl}</p>
+            <div class="panel-box">
+              Admin anahtarı env var ile sabit: \${d.security.adminKeyIsEnvConfigured ? '<span class="badge ok">Evet</span>' : '<span class="badge warn">Hayır — her restartta değişir</span>'}
+              &nbsp;·&nbsp; Genel limit: \${d.security.rateLimitGeneral} &nbsp;·&nbsp; Crawl limit: \${d.security.rateLimitCrawl}
+            </div>
+          </section>
+
+          <section>
+            <h2>Son 24 Saat Arama Hacmi</h2>
+            <div class="panel-box">\${barChart(d.queryAnalytics.hourlyVolume, 'hour', 'count')}</div>
+          </section>
+
+          <section>
+            <h2>En Çok Sayfa Barındıran Siteler</h2>
+            <div class="panel-box">\${barChart(d.topSites, 'domain', 'page_count')}</div>
           </section>
 
           <section>
             <h2>En Çok Aranan Sorgular</h2>
-            <table><thead><tr><th>Sorgu</th><th>Kaç Kez</th><th>Ort. Sonuç</th><th>Ort. ms</th></tr></thead>
-            <tbody>\${rows(d.queryAnalytics.topQueries, ['query','hits','avg_results','avg_ms'])}</tbody></table>
+            <div class="panel-box"><table><thead><tr><th>Sorgu</th><th>Kaç Kez</th><th>Ort. Sonuç</th><th>Ort. ms</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.topQueries, ['query','hits','avg_results','avg_ms'])}</tbody></table></div>
           </section>
 
           <section>
-            <h2>Sıfır Sonuç Veren Sorgular (Zero Result Queries)</h2>
-            <table><thead><tr><th>Sorgu</th><th>Tarih</th></tr></thead>
-            <tbody>\${rows(d.queryAnalytics.zeroResultQueries, ['query','searched_at'])}</tbody></table>
+            <h2>⚠️ Sıfır Sonuç Veren Sorgular</h2>
+            <div class="panel-box"><table><thead><tr><th>Sorgu</th><th>Tarih</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.zeroResultQueries, ['query','searched_at'])}</tbody></table></div>
           </section>
 
           <section>
             <h2>Son Aramalar</h2>
-            <table><thead><tr><th>Sorgu</th><th>Sonuç</th><th>ms</th><th>Tarih</th></tr></thead>
-            <tbody>\${rows(d.queryAnalytics.recentSearches, ['query','results_count','execution_ms','searched_at'])}</tbody></table>
+            <div class="panel-box"><table><thead><tr><th>Sorgu</th><th>Sonuç</th><th>ms</th><th>Tarih</th></tr></thead>
+            <tbody>\${rows(d.queryAnalytics.recentSearches, ['query','results_count','execution_ms','searched_at'])}</tbody></table></div>
           </section>
-        \`;
+        </div>
+
+        <div id="tab-sites" class="tab-panel">
+          <section>
+            <h2>Site Yönetimi (\${d.topSites.length} gösteriliyor)</h2>
+            <div class="panel-box"><table><thead><tr><th>Domain</th><th>Ad</th><th>Sayfa</th><th></th></tr></thead>
+            <tbody>\${(d.topSites||[]).map(s => \`<tr><td>\${s.domain}</td><td>\${s.name||'-'}</td><td>\${s.page_count}</td>
+              <td><button class="sm danger" onclick="blockDomainQuick('\${s.domain}')">Yasakla</button></td></tr>\`).join('')}</tbody></table></div>
+          </section>
+        </div>
+
+        <div id="tab-rss" class="tab-panel">
+          <section>
+            <h2>Yeni RSS Kaynağı Ekle</h2>
+            <div class="panel-box">
+              <div class="inline-form">
+                <input id="rssName" placeholder="Ad (ör. Milliyet)" />
+                <input id="rssUrl" placeholder="RSS URL" />
+                <input id="rssDomain" placeholder="Domain (ör. milliyet.com.tr)" />
+                <input id="rssCategory" placeholder="Kategori (ör. Haber)" />
+                <button onclick="addRssSource()">Ekle</button>
+              </div>
+            </div>
+          </section>
+          <section>
+            <h2>Kayıtlı RSS Kaynakları (\${d.moderation.rssSources.length})</h2>
+            <div class="panel-box"><table><thead><tr><th>Ad</th><th>Domain</th><th>Kategori</th><th>Durum</th><th></th></tr></thead>
+            <tbody>\${(d.moderation.rssSources||[]).map(s => \`<tr><td>\${s.name}</td><td>\${s.domain}</td><td>\${s.category}</td>
+              <td>\${s.is_active ? '<span class="badge ok">Aktif</span>' : '<span class="badge warn">Pasif</span>'}</td>
+              <td><button class="sm ghost" onclick="toggleRss(\${s.id}, \${s.is_active ? 0 : 1})">\${s.is_active?'Durdur':'Aktifleştir'}</button>
+              <button class="sm danger" onclick="deleteRss(\${s.id})">Sil</button></td></tr>\`).join('')}</tbody></table></div>
+          </section>
+        </div>
+
+        <div id="tab-blocked" class="tab-panel">
+          <section>
+            <h2>Domain Yasakla</h2>
+            <div class="panel-box">
+              <div class="inline-form">
+                <input id="blockDomain" placeholder="domain.com" />
+                <input id="blockReason" placeholder="Sebep (opsiyonel)" />
+                <button class="danger" onclick="blockDomain()">Yasakla</button>
+              </div>
+            </div>
+          </section>
+          <section>
+            <h2>Yasaklı Domainler (\${d.moderation.blockedDomains.length})</h2>
+            <div class="panel-box"><table><thead><tr><th>Domain</th><th>Sebep</th><th>Tarih</th><th></th></tr></thead>
+            <tbody>\${(d.moderation.blockedDomains||[]).map(b => \`<tr><td>\${b.domain}</td><td>\${b.reason||'-'}</td><td>\${b.blocked_at}</td>
+              <td><button class="sm ghost" onclick="unblockDomain(\${b.id})">Kaldır</button></td></tr>\`).join('')}</tbody></table></div>
+          </section>
+        </div>
+
+        <div id="tab-complaints" class="tab-panel">
+          <section>
+            <h2>Açık Şikayetler (\${d.moderation.openComplaints.length})</h2>
+            <div class="panel-box"><table><thead><tr><th>URL</th><th>Sebep</th><th>Detay</th><th>Tarih</th><th></th></tr></thead>
+            <tbody>\${(d.moderation.openComplaints||[]).map(c => \`<tr><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">\${c.url}</td><td>\${c.reason}</td><td>\${c.detail||'-'}</td><td>\${c.created_at}</td>
+              <td><button class="sm ghost" onclick="resolveComplaint(\${c.id}, false)">Çözüldü</button>
+              <button class="sm danger" onclick="resolveComplaint(\${c.id}, true)">Sayfayı Sil + Çöz</button></td></tr>\`).join('')}</tbody></table></div>
+          </section>
+          <section>
+            <h2>Herkese Açık Şikayet Formu</h2>
+            <div class="panel-box"><code>POST /api/report { url, reason, detail }</code> — kimlik doğrulaması gerektirmez, herkes gönderebilir.</div>
+          </section>
+        </div>
+
+        <div id="tab-audit" class="tab-panel">
+          <section>
+            <h2>Son 30 Admin İşlemi</h2>
+            <div class="panel-box"><table><thead><tr><th>İşlem</th><th>Hedef</th><th>Detay</th><th>Tarih</th></tr></thead>
+            <tbody>\${rows(d.auditLog, ['action','target','detail','created_at'])}</tbody></table></div>
+          </section>
+        </div>
+      \`;
+    }
+
+    async function triggerAction(url, body, successMsg, method) {
+      try {
+        await apiCall(url, { method: method || 'POST', body: body !== undefined ? JSON.stringify(body) : undefined });
+        toast(successMsg);
+        loadOverview();
       } catch (err) {
-        content.innerHTML = '<p class="err">Bağlantı hatası: ' + err.message + '</p>';
+        toast(err.message, true);
       }
+    }
+    async function blockDomain() {
+      const domain = document.getElementById('blockDomain').value.trim();
+      const reason = document.getElementById('blockReason').value.trim();
+      if (!domain) return toast('Domain gerekli', true);
+      await triggerAction('/api/admin/domains/block', { domain, reason }, domain + ' yasaklandı');
+    }
+    async function blockDomainQuick(domain) {
+      if (!confirm(domain + ' yasaklansın mı? Tüm sayfaları silinecek.')) return;
+      await triggerAction('/api/admin/domains/block', { domain }, domain + ' yasaklandı');
+    }
+    async function unblockDomain(id) {
+      await triggerAction('/api/admin/domains/block/' + id, undefined, 'Yasak kaldırıldı', 'DELETE');
+    }
+    async function addRssSource() {
+      const name = document.getElementById('rssName').value.trim();
+      const url = document.getElementById('rssUrl').value.trim();
+      const domain = document.getElementById('rssDomain').value.trim();
+      const category = document.getElementById('rssCategory').value.trim() || 'Haber';
+      if (!name || !url || !domain) return toast('Ad, URL ve domain gerekli', true);
+      await triggerAction('/api/admin/rss-sources', { name, url, domain, category }, 'Kaynak eklendi');
+    }
+    async function toggleRss(id, isActive) {
+      await triggerAction('/api/admin/rss-sources/' + id, { isActive: !!isActive }, 'Güncellendi', 'PATCH');
+    }
+    async function deleteRss(id) {
+      if (!confirm('Bu RSS kaynağı silinsin mi?')) return;
+      await triggerAction('/api/admin/rss-sources/' + id, undefined, 'Silindi', 'DELETE');
+    }
+    async function resolveComplaint(id, removePage) {
+      await triggerAction('/api/admin/complaints/' + id + '/resolve', { removePage }, 'Şikayet çözüldü');
     }
 
     if (document.getElementById('adminKey').value) loadOverview();
@@ -889,6 +1327,7 @@ function indexDdgResultsIntoOwnDb(ddgResults) {
     try {
       const hostname = item.displayLink || new URL(item.link).hostname;
       const siteId = getOrCreateSiteId(hostname);
+      if (siteId === null) continue; // domain admin tarafından yasaklanmış, indekslenmez
       db.prepare(`
         INSERT OR IGNORE INTO pages (site_id, title, url, snippet, content, indexed_at)
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
