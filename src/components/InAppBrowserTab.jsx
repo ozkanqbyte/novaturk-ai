@@ -37,6 +37,8 @@ const isKnownBlockedDomain = (url) => {
   }
 };
 
+const IPHONE_SAFARI_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
 export default function InAppBrowserTab({ 
   tab, 
   onClose, 
@@ -51,6 +53,18 @@ export default function InAppBrowserTab({
 }) {
   const innerRef = useRef(null);
   const internalNavUrlRef = useRef('');
+
+  // 📱 Otomatik Mobil Modu Algılama (Mobilde siteler kendiliğinden mobil arayüzünü açar)
+  const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     if (iframeRef && innerRef.current) {
       iframeRef.current = innerRef.current;
@@ -495,8 +509,9 @@ export default function InAppBrowserTab({
             {isElectron ? (
               <webview
                 ref={innerRef}
-                key={reloadKey}
+                key={`${reloadKey}_${isMobileScreen ? 'mob' : 'desk'}`}
                 src={currentUrl}
+                useragent={isMobileScreen ? IPHONE_SAFARI_USER_AGENT : undefined}
                 partition={tab.isIncognito ? "nopersist_incognito" : "persist:novaturk_browsing"}
                 allowpopups="true"
                 webpreferences="backgroundThrottling=no"

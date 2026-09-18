@@ -848,19 +848,21 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME ANA SAYFASI)     */
           /* ============================================================ */
-          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col justify-between pb-24 md:pb-0">
-            <div className="w-full max-w-4xl mx-auto px-4 py-8 sm:py-12 flex flex-col items-center text-center animate-fadeIn my-auto">
+          /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME BAŞLANGIÇ SAYFASI) */
+          /* ============================================================ */
+          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 pt-8 sm:pt-14">
+            <div className="w-full max-w-3xl mx-auto px-4 flex flex-col items-center text-center animate-fadeIn">
               
-              {/* 🌟 GOOGLE TARZI ÇOK RENKLİ VE İNTERAKTİF NOVATÜRK LOGOSU & İSMİ */}
+              {/* 🍏 APPLE TARZINDA MİNİMALİST LOGO VE İSİM */}
               <NovaTurkGoogleLogo 
                 isDark={isDark} 
                 currentTheme={currentTheme} 
-                showSubtitle={true} 
-                size="large" 
+                showSubtitle={false} 
+                size="medium" 
               />
 
-              {/* Apple VisionOS Search Bar */}
-              <div className="w-full max-w-2xl mb-4">
+              {/* 🔍 Apple VisionOS Search Bar (Bir tık aşağıda, ferah ve modern) */}
+              <div className="w-full max-w-2xl mt-4 sm:mt-5 mb-8 sm:mb-10">
                 <SearchBar 
                   onSearch={handleSearch} 
                   isCompact={false} 
@@ -870,17 +872,6 @@ const isElectronApp = () => {
                   isDark={isDark}
                   currentTheme={currentTheme}
                 />
-              </div>
-
-              {/* 🌟 Ajan / Gizli Gezinti Hızlı Başlatıcı */}
-              <div className="mb-8">
-                <button
-                  onClick={handleNewIncognitoTab}
-                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-300 text-xs font-semibold backdrop-blur-md transition-all hover:scale-105 cursor-pointer shadow-sm group"
-                >
-                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                  <span>🕶️ Gizli Gezinti (Ajan Modu - Ctrl + Shift + N)</span>
-                </button>
               </div>
 
               {/* 🌟 1. APPLE SAFARI FAVORİLER (KULLANICININ EKLEDİĞİ ŞEYLER) */}
@@ -903,61 +894,7 @@ const isElectronApp = () => {
                 }}
                 isDark={isDark}
               />
-
-              {/* Minimalist Safari Footer Note */}
-              <div className="mt-4 mb-2 flex items-center justify-center gap-4 text-[11px] text-slate-400 opacity-60 font-sans">
-                <span>🛡️ Reklamsız Güvenli Gezinti</span>
-                <span>•</span>
-                <span>🔒 Gizli Arama Modu</span>
-                <span>•</span>
-                <span>⚡ Hızlı & Yerli İndeks</span>
-              </div>
             </div>
-
-            {/* Apple Minimalist Footer (Sadece Arama Sayfasında) */}
-            <footer className={`w-full border-t py-4 px-6 backdrop-blur-xl transition-colors ${
-              isDark ? 'border-white/10 bg-[#08090d]/70' : 'border-black/10 bg-[#f6f7fb]/70'
-            }`}>
-              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs opacity-60">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">NovaTürk AI</span>
-                  <span>•</span>
-                  <span>{currentTheme.name} Teması</span>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsThemeModalOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity flex items-center gap-1 font-medium"
-                  >
-                    <Palette className="w-3.5 h-3.5" /> Temalar (10)
-                  </button>
-                  <span>•</span>
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsAdminOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity"
-                  >
-                    Admin Masası
-                  </button>
-                  <span>•</span>
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsSettingsOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity font-semibold"
-                  >
-                    ⚙️ Sistem & Tarayıcı Ayarları
-                  </button>
-                </div>
-              </div>
-            </footer>
           </div>
         )
       ) : (

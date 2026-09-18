@@ -26,10 +26,10 @@ export default function ThemeSelectorModal({ isOpen, onClose, currentTheme, onSe
             </div>
             <div>
               <h3 className="text-base font-bold tracking-tight font-['Outfit',sans-serif]">
-                10 Seçkin Cam & Gradient Teması
+                20 Seçkin Cam & OLED Teması
               </h3>
               <p className="text-xs opacity-60">
-                Apple VisionOS şeffaf cam ve renkli degrade arka plan koleksiyonu
+                Apple VisionOS şeffaf cam, degrade ve saf OLED siyah arka plan koleksiyonu
               </p>
             </div>
           </div>

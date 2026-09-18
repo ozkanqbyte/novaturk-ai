@@ -110,7 +110,7 @@ export default function MobileTopBar({
                 <Palette className="w-4 h-4 text-sky-400 shrink-0" />
                 <div className="text-left">
                   <span className="block">Cam Temaları</span>
-                  <span className="text-[10px] text-slate-400 font-normal">10 Renk</span>
+                  <span className="text-[10px] text-slate-400 font-normal">20 Renk & OLED</span>
                 </div>
               </button>
 
