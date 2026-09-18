@@ -951,12 +951,12 @@ const isElectronApp = () => {
                 isDark ? 'bg-[#08090d]/90' : 'bg-[#f6f7fb]/92'
               }`}
             >
-              <div className="max-w-7xl mx-auto px-3 sm:px-5 flex items-center justify-between gap-3 sm:gap-5">
+              <div className="w-full px-3 sm:px-6 flex items-center justify-start gap-2.5 sm:gap-3.5">
                 
-                {/* 🌟 1. SOL TARAF: MİNİMALİST APPLE TARZINDA LOGO VE İSİM */}
+                {/* 🌟 1. EN SOLDA: MİNİMALİST APPLE TARZINDA LOGO VE İSİM */}
                 <button
                   onClick={handleHomeClick}
-                  className="flex items-center gap-2 sm:gap-2.5 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left"
+                  className="flex items-center gap-2 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left"
                   title="Ana Sayfaya Dön"
                 >
                   {/* Apple Squircle Compass Icon */}
@@ -967,12 +967,12 @@ const isElectronApp = () => {
                         : '0 4px 14px rgba(0,0,0,0.08), inset 0 1px 1px rgba(255,255,255,0.8)'
                     }}
                     className={`${
-                      isSearchHeaderMini ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 sm:w-9 sm:h-9 rounded-xl'
+                      isSearchHeaderMini ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-xl'
                     } flex items-center justify-center border transition-all duration-300 group-hover:scale-105 backdrop-blur-xl ${
                       isDark ? 'bg-white/10 border-white/20 text-sky-400' : 'bg-white/90 border-black/10 text-sky-600'
                     }`}
                   >
-                    <Compass className={`${isSearchHeaderMini ? 'w-3.5 h-3.5' : 'w-4 h-4 sm:w-4.5 sm:h-4.5'} transition-transform duration-500 group-hover:rotate-45`} />
+                    <Compass className={`${isSearchHeaderMini ? 'w-3.5 h-3.5' : 'w-4 h-4'} transition-transform duration-500 group-hover:rotate-45`} />
                   </div>
 
                   {/* Minimalist Apple Logo & İsim */}
@@ -992,8 +992,8 @@ const isElectronApp = () => {
                   </div>
                 </button>
 
-                {/* 🌟 2. ORTA: KULLANICI AŞAĞI KAYDIRDIĞINDA MİNİMALİST KÜÇÜLEN ARAMA BARI */}
-                <div className="flex-1 flex items-center justify-start max-w-3xl">
+                {/* 🌟 2. HEMEN YANINDA (AZ MESAFELİ VE SOLDA): ARAMA BARI */}
+                <div className="w-full max-w-xl sm:max-w-2xl">
                   <SearchBar 
                     onSearch={handleSearch} 
                     isCompact={true} 
@@ -1005,9 +1005,6 @@ const isElectronApp = () => {
                     currentTheme={currentTheme}
                   />
                 </div>
-
-                {/* Sağ Taraf: İnce Boşluk Tutucu */}
-                <div className="hidden lg:block w-4" />
               </div>
             </div>
 

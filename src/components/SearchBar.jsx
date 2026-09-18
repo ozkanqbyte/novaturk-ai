@@ -166,7 +166,7 @@ export default function SearchBar({
 
   return (
     <div className={`w-full transition-all duration-300 ${
-      isMini ? 'max-w-2xl' : isCompact ? 'max-w-4xl' : 'max-w-2xl mx-auto'
+      isMini ? 'max-w-xl' : isCompact ? 'max-w-2xl' : 'max-w-2xl mx-auto'
     }`}>
       <form onSubmit={handleSubmit} className="relative w-full">
         {/* Apple Dynamic Search Capsule */}
