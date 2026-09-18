@@ -207,8 +207,64 @@ export function initDatabase() {
     );
   `);
 
+  initFullTextIndex();
+
   // İlk Kurulumda 50 Türk Sitesini Veritabanına Yükle
   seedInitialSites();
+}
+
+// FTS5 ters indeksi kullanılabilir mi? (node:sqlite FTS5 ile derlenmiş olmalı)
+export let ftsAvailable = false;
+
+// 🔍 Gerçek Ters İndeks (Inverted Index) — FTS5
+// Önceden arama `LIKE '%kelime%'` ile TÜM tabloyu tarıyordu: 6.000 sayfada bile yavaş,
+// 100.000 sayfada kullanılamaz hale gelirdi. FTS5 gerçek bir ters indeks kurar ve
+// yerleşik BM25 sıralamasını sağlar.
+// remove_diacritics 2 → "türkiye" ile "turkiye" aynı sayılır (Türkçe için kritik).
+function initFullTextIndex() {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
+        title, snippet, content,
+        content='pages',
+        content_rowid='id',
+        tokenize='unicode61 remove_diacritics 2'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS pages_fts_insert AFTER INSERT ON pages BEGIN
+        INSERT INTO pages_fts(rowid, title, snippet, content)
+        VALUES (new.id, new.title, new.snippet, new.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS pages_fts_delete AFTER DELETE ON pages BEGIN
+        INSERT INTO pages_fts(pages_fts, rowid, title, snippet, content)
+        VALUES ('delete', old.id, old.title, old.snippet, old.content);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS pages_fts_update AFTER UPDATE ON pages BEGIN
+        INSERT INTO pages_fts(pages_fts, rowid, title, snippet, content)
+        VALUES ('delete', old.id, old.title, old.snippet, old.content);
+        INSERT INTO pages_fts(rowid, title, snippet, content)
+        VALUES (new.id, new.title, new.snippet, new.content);
+      END;
+    `);
+
+    // Mevcut sayfalar indekste yoksa (ilk kurulum veya sonradan eklenen FTS) doldur
+    const pageCount = db.prepare('SELECT COUNT(*) as count FROM pages').get().count;
+    const ftsCount = db.prepare('SELECT COUNT(*) as count FROM pages_fts').get().count;
+
+    if (pageCount > 0 && ftsCount < pageCount) {
+      db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
+      const after = db.prepare('SELECT COUNT(*) as count FROM pages_fts').get().count;
+      console.log(`[NovaTurk FTS] Ters indeks yeniden kuruldu: ${after} sayfa indekslendi.`);
+    }
+
+    ftsAvailable = true;
+    console.log('[NovaTurk FTS] FTS5 ters indeksi aktif (BM25 sıralama kullanılabilir).');
+  } catch (err) {
+    ftsAvailable = false;
+    console.warn('[NovaTurk FTS] FTS5 kullanılamıyor, eski LIKE aramasına düşülüyor:', err.message);
+  }
 }
 
 export function logAdminAction(action, target, detail) {
@@ -291,7 +347,27 @@ function stemTurkish(word) {
   return w;
 }
 
-// Arama Sorgusu (Türkçe Ek-Duyarlı TF Benzeri Alaka Skorlaması ile Sıralanmış)
+// FTS5 MATCH sorgusu için güvenli ifade üretir.
+// Kullanıcı girdisi doğrudan MATCH'e verilirse tırnak/yıldız gibi karakterler sözdizimi
+// hatası verir (ve sorgu enjeksiyonuna benzer davranışa yol açar) — her terim tırnak
+// içine alınıp kaçışlanır. Kök-terimler prefix (*) ile de aranır: "haberler" → "haber"*
+function buildFtsMatchExpression(rawTerms, stemmedTerms) {
+  const quote = (t) => '"' + t.replace(/"/g, '""') + '"';
+  const parts = [];
+
+  for (const term of rawTerms) {
+    if (term.length >= 2) parts.push(quote(term));
+  }
+  for (const stem of stemmedTerms) {
+    // FTS5'te önek operatörü tırnağın hemen ardına gelmeli: "haber"* (araya boşluk girerse sözdizimi bozulur)
+    if (stem.length >= 3 && !rawTerms.includes(stem)) parts.push(quote(stem) + '*');
+  }
+  // Terimlerden herhangi biri eşleşsin (OR), sıralamayı BM25 yapacak
+  return parts.length > 0 ? parts.join(' OR ') : null;
+}
+
+// Arama Sorgusu — FTS5 ters indeksi + yerleşik BM25 sıralaması
+// (FTS5 yoksa eski LIKE tabanlı yönteme düşer)
 export function searchLocalDb(query) {
   const cleanQ = query.trim().toLowerCase();
   if (!cleanQ) return [];
@@ -299,7 +375,40 @@ export function searchLocalDb(query) {
   const rawTerms = cleanQ.split(/\s+/).filter(Boolean);
   const stemmedTerms = [...new Set(rawTerms.map(stemTurkish))];
 
-  // Aday satırları çekerken hem tam ifadeyi hem de kök-terimleri ara (ek farkını tolere et)
+  if (ftsAvailable) {
+    const matchExpr = buildFtsMatchExpression(rawTerms, stemmedTerms);
+    if (matchExpr) {
+      try {
+        // bm25(tablo, ağırlıklar...) — başlık içerikten 10 kat, özet 3 kat daha önemli.
+        // bm25 NEGATİF döner (küçük = daha alakalı), bu yüzden ASC sıralıyoruz.
+        const ftsRows = db.prepare(`
+          SELECT p.id, p.title, p.url, p.snippet, s.name as sourceName,
+                 s.domain as displayLink, s.category, s.authority_score,
+                 bm25(pages_fts, 10.0, 3.0, 1.0) as bm25_score
+          FROM pages_fts
+          JOIN pages p ON p.id = pages_fts.rowid
+          LEFT JOIN sites s ON p.site_id = s.id
+          WHERE pages_fts MATCH ?
+          ORDER BY bm25_score ASC
+          LIMIT 40
+        `).all(matchExpr);
+
+        return ftsRows
+          .map(row => {
+            // BM25'i pozitif bir alaka puanına çevir, otorite bonusunu ekle
+            const relevance = (-(row.bm25_score || 0)) * 10 + (row.authority_score || 50) / 10;
+            const { bm25_score, ...rest } = row;
+            return { ...rest, relevanceScore: Number(relevance.toFixed(2)) };
+          })
+          .sort((a, b) => b.relevanceScore - a.relevanceScore)
+          .slice(0, 20);
+      } catch (err) {
+        console.warn('[NovaTurk FTS] BM25 sorgusu başarısız, LIKE yöntemine düşülüyor:', err.message);
+      }
+    }
+  }
+
+  // --- Geri dönüş (fallback): FTS5 yoksa eski LIKE tabanlı arama ---
   const likeTargets = [`%${cleanQ}%`, ...stemmedTerms.map(t => `%${t}%`)];
   const conditions = likeTargets.map(() => '(LOWER(p.title) LIKE ? OR LOWER(p.snippet) LIKE ? OR LOWER(p.content) LIKE ?)').join(' OR ');
   const params = likeTargets.flatMap(t => [t, t, t]);
