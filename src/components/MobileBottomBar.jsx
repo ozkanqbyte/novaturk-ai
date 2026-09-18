@@ -1,49 +1,96 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Compass, Search, Plus, Layers, Play, Pause, 
-  Settings, Palette, Globe, ShieldCheck, Sun, Moon,
-  Music, Sparkles
+  Lock, Search, Plus, ArrowLeft, ArrowRight, RotateCw, 
+  Layers, X, Music, Play, Pause, ExternalLink, Globe, Sparkles
 } from 'lucide-react';
 import { sound } from '../services/soundService';
 
 export default function MobileBottomBar({
   tabs,
   activeTabId,
-  onHomeClick,
+  activeTab,
+  onNavigate,
+  onSearch,
   onNewTab,
   onOpenTabsSheet,
-  onOpenSettings,
-  onOpenThemeSelector,
-  onOpenVpnModal,
-  onOpenAdmin,
+  onGoBack,
+  onGoForward,
+  canGoBack = true,
+  canGoForward = false,
+  onReload,
   isDark,
-  setIsDark,
   currentTheme,
   activeMediaTab,
   mediaState,
-  onToggleMediaPlay,
-  onExpandIsland
+  onToggleMediaPlay
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [queryInput, setQueryInput] = useState('');
+  const inputRef = useRef(null);
+
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
   const isMusicPlaying = activeMediaTab && mediaState && !mediaState.paused;
 
+  // Aktif sekmenin URL veya Arama terimi
+  const displayUrl = activeTab?.url || '';
+  let hostname = '';
+  if (displayUrl) {
+    try {
+      hostname = new URL(displayUrl).hostname.replace(/^www\./, '');
+    } catch {}
+  }
+  const displayText = activeTab?.type === 'search' 
+    ? (activeTab.query ? `"${activeTab.query}"` : 'NovaTürk Arama')
+    : (hostname || activeTab?.title || 'Web Gezgini');
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleBarClick = () => {
+    sound.playClick();
+    setQueryInput(activeTab?.type === 'search' ? (activeTab.query || '') : (activeTab?.url || ''));
+    setIsEditing(true);
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const val = queryInput.trim();
+    if (!val) {
+      setIsEditing(false);
+      return;
+    }
+
+    sound.playChime();
+    setIsEditing(false);
+
+    // Eğer geçerli bir URL ise veya nokta içeriyorsa doğrudan git
+    const isUrl = /^(https?:\/\/)?([\da-z\.-]+)\.([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i.test(val) || val.startsWith('http://') || val.startsWith('https://');
+    if (isUrl && onNavigate) {
+      const finalUrl = val.startsWith('http') ? val : `https://${val}`;
+      onNavigate(finalUrl);
+    } else if (onSearch) {
+      onSearch(val);
+    }
+  };
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden select-none pointer-events-auto">
-      {/* 🎵 1. Canlı Mini Müzik Kapsülü (Eğer şarkı çalıyorsa alt barın üstünde yüzer) */}
+    <div className="fixed bottom-2 left-2.5 right-2.5 z-40 md:hidden select-none pointer-events-auto mb-[env(safe-area-inset-bottom,0px)]">
+      
+      {/* 🎵 1. Mobilde Çalan Şarkı Varsa: Safari Barın Üstünde Yüzen Zarif Cam Müzik Kapsülü */}
       {activeMediaTab && (
-        <div className="px-3 pb-1.5 animate-in slide-in-from-bottom-3 duration-300">
+        <div className="px-1 pb-1.5 animate-in slide-in-from-bottom-2 duration-300">
           <div 
-            onClick={() => {
-              sound.playClick();
-              if (onExpandIsland) onExpandIsland();
-            }}
             style={{
-              boxShadow: `0 8px 25px -4px rgba(0,0,0,0.7), 0 0 20px rgba(239,68,68,0.3)`
+              boxShadow: '0 8px 30px rgba(0,0,0,0.8), 0 0 20px rgba(239,68,68,0.35)'
             }}
-            className="w-full px-3 py-1.5 rounded-2xl bg-black/85 border border-red-500/40 backdrop-blur-2xl flex items-center justify-between gap-2.5 cursor-pointer text-white"
+            className="w-full px-3 py-1.5 rounded-2xl bg-black/85 border border-red-500/40 backdrop-blur-3xl flex items-center justify-between gap-2.5 text-white"
           >
-            <div className="flex items-center gap-2 min-w-0">
-              {/* Dönen Vinil Mini Görsel */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              {/* Dönen Vinil Plak */}
               <div className="w-6 h-6 rounded-full overflow-hidden border border-red-400/60 shrink-0 relative animate-spin-slow">
                 {mediaState?.thumbnail ? (
                   <img src={mediaState.thumbnail} alt="" className="w-full h-full object-cover" />
@@ -55,25 +102,25 @@ export default function MobileBottomBar({
                 <div className="absolute inset-0 m-auto w-1.5 h-1.5 rounded-full bg-black border border-white/60" />
               </div>
 
-              {/* Parça Adı & Sanatçı */}
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold text-white truncate max-w-[200px]">
-                  {mediaState?.title || activeMediaTab.title || 'YouTube Müzik'}
+              {/* Şarkı Başlığı */}
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-white truncate drop-shadow-sm">
+                  {mediaState?.title || activeMediaTab.title || 'YouTube Çalıyor'}
                 </p>
                 <p className="text-[9px] text-red-300/80 truncate">
-                  {mediaState?.artist || 'Canlı Çalıyor'} • Adada Göster
+                  {mediaState?.artist || 'Canlı Müzik'}
                 </p>
               </div>
             </div>
 
-            {/* Oynat / Durdur Butonu */}
+            {/* Oynat / Durdur */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 sound.playClick();
                 if (onToggleMediaPlay) onToggleMediaPlay();
               }}
-              className="p-1.5 rounded-full bg-white text-slate-950 shadow-md hover:scale-105 active:scale-95 transition-all shrink-0"
+              className="p-1.5 rounded-full bg-white text-slate-950 hover:scale-105 active:scale-95 transition-all shadow-md shrink-0 cursor-pointer"
             >
               {isMusicPlaying ? (
                 <Pause className="w-3 h-3 fill-current" />
@@ -85,113 +132,120 @@ export default function MobileBottomBar({
         </div>
       )}
 
-      {/* 🌟 2. Apple / Google Hibrit Cam Dock (Bottom Navigation Bar) */}
-      <nav 
+      {/* 🌟 2. APPLE SAFARI iOS FLOATING GLASS ADDRESS & SEARCH CAPSULE */}
+      <div 
         style={{
           boxShadow: isDark 
-            ? '0 -10px 30px rgba(0,0,0,0.8), inset 0 1px 1px rgba(255,255,255,0.1)' 
-            : '0 -8px 25px rgba(0,0,0,0.08), inset 0 1px 1px rgba(255,255,255,0.8)'
+            ? '0 12px 35px -5px rgba(0,0,0,0.85), inset 0 1px 1px rgba(255,255,255,0.25)' 
+            : '0 12px 35px -5px rgba(0,0,0,0.2), inset 0 1px 1px rgba(255,255,255,0.8)'
         }}
-        className={`w-full border-t backdrop-blur-3xl px-4 pt-2 pb-[calc(0.6rem+env(safe-area-inset-bottom,0px))] transition-colors ${
+        className={`w-full rounded-full border backdrop-blur-3xl px-2 py-1.5 flex items-center justify-between gap-1.5 transition-all duration-300 ${
           isDark 
-            ? 'bg-[#06080d]/90 border-white/10 text-white' 
-            : 'bg-white/90 border-black/10 text-slate-900'
+            ? 'bg-[#080a12]/92 border-white/20 text-white' 
+            : 'bg-white/92 border-black/15 text-slate-900'
         }`}
       >
-        <div className="max-w-md mx-auto flex items-center justify-between gap-1">
-          
-          {/* Ana Sayfa */}
+        {/* Sol Buton: Geri Butonu (veya Yenile) */}
+        {!isEditing && (
           <button
             onClick={() => {
               sound.playClick();
-              onHomeClick();
+              if (canGoBack && onGoBack) onGoBack();
+              else if (onReload) onReload();
             }}
-            className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-xl hover:bg-white/10 transition-all active:scale-90 text-slate-300 hover:text-white"
-            title="Ana Sayfa"
+            className="p-2 rounded-full hover:bg-white/10 active:scale-90 transition-all text-slate-300 hover:text-white shrink-0"
+            title="Geri Git"
           >
-            <Compass className="w-5 h-5 text-sky-400" />
-            <span className="text-[10px] font-medium">Ana Sayfa</span>
+            {canGoBack ? <ArrowLeft className="w-4 h-4" /> : <RotateCw className="w-4 h-4 opacity-70" />}
           </button>
+        )}
 
-          {/* Hızlı Yeni Sekme (+) */}
-          <button
-            onClick={() => {
-              sound.playChime();
-              onNewTab();
-            }}
-            style={{
-              background: `linear-gradient(135deg, ${themeAccent}, #8b5cf6)`,
-              boxShadow: `0 4px 15px ${themeAccent}50`
-            }}
-            className="w-10 h-10 rounded-2xl flex items-center justify-center text-white font-bold transition-all active:scale-90 cursor-pointer shadow-lg"
-            title="Yeni Sekme Aç"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-
-          {/* Sekme Yöneticisi (Kartlar ve Sayaç) */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              onOpenTabsSheet();
-            }}
-            className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-xl hover:bg-white/10 transition-all active:scale-90 text-slate-300 hover:text-white relative"
-            title="Açık Sekmeler"
-          >
-            <div className="relative">
-              <Layers className="w-5 h-5 text-purple-400" />
-              <span className="absolute -top-1 -right-2 px-1.5 py-0.2 rounded-full bg-purple-500 text-white text-[9px] font-bold border border-black shadow-sm">
-                {tabs.length}
+        {/* 🔍 Orta Kısım: Apple Safari Adres / Arama Kapsülü */}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <form onSubmit={handleSubmit} className="flex items-center gap-1.5 w-full">
+              <Search className="w-3.5 h-3.5 text-sky-400 shrink-0 ml-1.5" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={queryInput}
+                onChange={(e) => setQueryInput(e.target.value)}
+                placeholder="Arayın veya web adresi yazın..."
+                className="w-full bg-transparent text-xs text-white placeholder-slate-400 focus:outline-none py-1"
+              />
+              {queryInput && (
+                <button
+                  type="button"
+                  onClick={() => setQueryInput('')}
+                  className="p-1 rounded-full hover:bg-white/10 text-slate-400 shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+              <button
+                type="submit"
+                className="px-2.5 py-1 rounded-full bg-sky-500 text-white text-[11px] font-bold shrink-0 shadow-sm"
+              >
+                Git
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="px-2 py-1 text-[11px] text-slate-400 hover:text-white shrink-0"
+              >
+                Vazgeç
+              </button>
+            </form>
+          ) : (
+            <div 
+              onClick={handleBarClick}
+              className="w-full py-1.5 px-3 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+            >
+              {activeTab?.type === 'web' ? (
+                <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+              ) : (
+                <Search className="w-3 h-3 text-sky-400 shrink-0" />
+              )}
+              <span className="text-xs font-semibold tracking-tight truncate max-w-[190px]">
+                {displayText}
               </span>
             </div>
-            <span className="text-[10px] font-medium">Sekmeler</span>
-          </button>
-
-          {/* Temalar */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              onOpenThemeSelector();
-            }}
-            className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-xl hover:bg-white/10 transition-all active:scale-90 text-slate-300 hover:text-white"
-            title="Cam Temaları"
-          >
-            <Palette className="w-5 h-5 text-emerald-400" />
-            <span className="text-[10px] font-medium">Temalar</span>
-          </button>
-
-          {/* Gece / Gündüz Modu */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              setIsDark(!isDark);
-            }}
-            className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-xl hover:bg-white/10 transition-all active:scale-90 text-slate-300 hover:text-white"
-            title={isDark ? "Açık Moda Geç" : "Koyu Moda Geç"}
-          >
-            {isDark ? (
-              <Sun className="w-5 h-5 text-amber-400" />
-            ) : (
-              <Moon className="w-5 h-5 text-slate-700" />
-            )}
-            <span className="text-[10px] font-medium">{isDark ? 'Açık' : 'Koyu'}</span>
-          </button>
-
-          {/* Sistem Ayarları */}
-          <button
-            onClick={() => {
-              sound.playClick();
-              onOpenSettings();
-            }}
-            className="flex flex-col items-center justify-center gap-1 p-1.5 rounded-xl hover:bg-white/10 transition-all active:scale-90 text-slate-300 hover:text-white"
-            title="Ayarlar"
-          >
-            <Settings className="w-5 h-5 text-slate-400" />
-            <span className="text-[10px] font-medium">Ayarlar</span>
-          </button>
-
+          )}
         </div>
-      </nav>
+
+        {/* Sağ Butonlar: Safari Sekmeler Rozeti & Yeni Sekme */}
+        {!isEditing && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            {/* (+) Hızlı Yeni Sekme Butonu */}
+            <button
+              onClick={() => {
+                sound.playChime();
+                if (onNewTab) onNewTab();
+              }}
+              className="p-2 rounded-full hover:bg-white/10 active:scale-90 transition-all text-slate-300 hover:text-white"
+              title="Yeni Sekme Aç"
+            >
+              <Plus className="w-4 h-4 text-sky-400" />
+            </button>
+
+            {/* 📑 Apple Safari Sekme Switcher Butonu (Kare İçinde Sekme Sayısı) */}
+            <button
+              onClick={() => {
+                sound.playClick();
+                if (onOpenTabsSheet) onOpenTabsSheet();
+              }}
+              style={{
+                borderColor: `${themeAccent}60`
+              }}
+              className="w-7 h-7 rounded-lg border-2 flex items-center justify-center text-xs font-bold text-white hover:scale-105 active:scale-90 transition-all bg-white/10 shadow-sm cursor-pointer ml-0.5"
+              title="Açık Sekmeleri Yönet"
+            >
+              <span className="font-mono text-[11px] font-black">{tabs.length}</span>
+            </button>
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }

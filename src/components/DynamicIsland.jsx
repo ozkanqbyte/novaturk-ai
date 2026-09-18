@@ -298,7 +298,7 @@ export default function DynamicIsland({
         style={{
           boxShadow: `0 8px 30px rgba(0,0,0,0.5), 0 0 15px ${themeAccent}30`
         }}
-        className="fixed top-14 right-4 z-[90] flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-2xl bg-black/85 border border-white/20 text-white hover:border-sky-400 hover:scale-105 transition-all duration-300 group shadow-lg cursor-pointer select-none"
+        className="hidden md:flex fixed top-14 right-4 z-[90] items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-2xl bg-black/85 border border-white/20 text-white hover:border-sky-400 hover:scale-105 transition-all duration-300 group shadow-lg cursor-pointer select-none"
         title="Dinamik Adayı Göster"
       >
         <div 
@@ -336,7 +336,7 @@ export default function DynamicIsland({
         pointerEvents: 'auto',
         touchAction: 'none'
       }}
-      className={`fixed z-[95] select-none transition-all ${
+      className={`hidden md:block fixed z-[95] select-none transition-all ${
         isDragging ? 'cursor-grabbing opacity-90 scale-[1.02]' : 'duration-300'
       }`}
     >

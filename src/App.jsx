@@ -24,6 +24,7 @@ import DynamicIsland from './components/DynamicIsland';
 import DealHunterWidget from './components/DealHunterWidget';
 import BusinessAdsModal from './components/BusinessAdsModal';
 import MobileBottomBar from './components/MobileBottomBar';
+import MobileTopBar from './components/MobileTopBar';
 import MobileTabsSheet from './components/MobileTabsSheet';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
@@ -1206,27 +1207,43 @@ const isElectronApp = () => {
         currentTheme={currentTheme}
       />
 
-      {/* 📱 APPLE & GOOGLE HİBRİT MOBİL ALT KONTROL DOCK'U */}
-      <MobileBottomBar 
-        tabs={tabs}
-        activeTabId={activeTabId}
+      {/* 🌟 MOBİL SAĞ ÜST KÖŞE AYARLAR VE KONTROL MERKEZİ (APPLE VISIONOS) */}
+      <MobileTopBar 
         onHomeClick={handleHomeClick}
-        onNewTab={handleNewTab}
-        onOpenTabsSheet={() => setIsMobileTabsOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenThemeSelector={() => setIsThemeModalOpen(true)}
         onOpenVpnModal={() => { setVpnState(getVpnState()); setIsVpnOpen(true); }}
         onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        isVpnActive={vpnState.isActive}
         isDark={isDark}
         setIsDark={setIsDark}
+        currentTheme={currentTheme}
+      />
+
+      {/* 📱 APPLE SAFARI iOS FLOATING GLASS ADRES & ARAMA KAPSÜLÜ (ALT BAR) */}
+      <MobileBottomBar 
+        tabs={tabs}
+        activeTabId={activeTabId}
+        activeTab={activeTab}
+        onNavigate={handleOmnibarNavigate}
+        onSearch={handleSearch}
+        onNewTab={handleNewTab}
+        onOpenTabsSheet={() => setIsMobileTabsOpen(true)}
+        onGoBack={handleOmnibarGoBack}
+        onGoForward={handleOmnibarGoForward}
+        canGoBack={(activeTab.historyIndex || 0) > 0}
+        canGoForward={(activeTab.historyIndex || 0) < ((activeTab.history || []).length - 1)}
+        onReload={handleOmnibarReload}
+        isDark={isDark}
         currentTheme={currentTheme}
         activeMediaTab={activeMediaTab}
         mediaState={mediaState}
         onToggleMediaPlay={handleToggleMediaPlay}
-        onExpandIsland={handleExpandIsland}
       />
 
-      {/* 📑 MOBİL SEKME YÖNETİCİSİ (APPLE BOTTOM SHEET CARD GRID) */}
+      {/* 📑 MOBİL SEKME YÖNETİCİSİ (APPLE SAFARI 3D CARD GRID) */}
       <MobileTabsSheet 
         isOpen={isMobileTabsOpen}
         onClose={() => setIsMobileTabsOpen(false)}
