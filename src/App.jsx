@@ -128,6 +128,29 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('novaturk:expand-island'));
   };
 
+  // 🔍 Arama Sonuçları Başlığı Küçülme (Dynamic Collapsible Search Bar) State'i
+  const [isSearchHeaderMini, setIsSearchHeaderMini] = useState(false);
+  const lastScrollTopRef = useRef(0);
+
+  const handleSearchResultsScroll = (e) => {
+    const currentScrollTop = e.currentTarget.scrollTop;
+
+    // 1. En yukarıdaysa (<= 25px): Kesinlikle tam boyut geri gelsin
+    if (currentScrollTop <= 25) {
+      setIsSearchHeaderMini(false);
+    } 
+    // 2. Aşağı kaydırınca (currentScrollTop artıyor ve > 50px): Küçülsün ve minimalist olsun
+    else if (currentScrollTop > lastScrollTopRef.current && currentScrollTop > 50) {
+      setIsSearchHeaderMini(true);
+    } 
+    // 3. Yukarı kaydırınca (currentScrollTop azalıyor): Geri gelsin!
+    else if (currentScrollTop < lastScrollTopRef.current - 6) {
+      setIsSearchHeaderMini(false);
+    }
+
+    lastScrollTopRef.current = currentScrollTop;
+  };
+
   // 10 Cam & Gradient Teması State'i
   const [currentTheme, setCurrentTheme] = useState(() => getSavedTheme());
   const [isDark, setIsDark] = useState(() => currentTheme.isDark);
@@ -616,6 +639,7 @@ const isElectronApp = () => {
   const handleSearch = async (queryToSearch) => {
     if (!queryToSearch || !queryToSearch.trim()) return;
     
+    setIsSearchHeaderMini(false);
     sound.playClick();
     const cleanQ = unescapeHtml(queryToSearch.trim());
     
@@ -906,28 +930,84 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* SEARCH RESULTS VIEW (FULL SCREEN SCROLLABLE)                 */
           /* ============================================================ */
-          <div className="w-full h-full flex-1 overflow-y-auto flex flex-col pb-24 md:pb-0">
-            {/* Sticky Floating Glass Search Header */}
+          <div 
+            onScroll={handleSearchResultsScroll}
+            className="w-full h-full flex-1 overflow-y-auto flex flex-col pb-24 md:pb-0"
+          >
+            {/* Sticky Floating Glass Search Header (Apple VisionOS Collapsible) */}
             <div 
               style={{
                 boxShadow: isDark 
-                  ? `0 10px 30px -10px rgba(0,0,0,0.6), 0 1px 0 0 rgba(255,255,255,0.08)` 
-                  : `0 10px 30px -10px rgba(0,0,0,0.05), 0 1px 0 0 rgba(0,0,0,0.06)`
+                  ? isSearchHeaderMini
+                    ? `0 12px 32px -10px rgba(0,0,0,0.85), 0 1px 0 0 rgba(255,255,255,0.12)`
+                    : `0 10px 30px -10px rgba(0,0,0,0.6), 0 1px 0 0 rgba(255,255,255,0.08)` 
+                  : isSearchHeaderMini
+                    ? `0 12px 32px -10px rgba(0,0,0,0.12), 0 1px 0 0 rgba(0,0,0,0.1)`
+                    : `0 10px 30px -10px rgba(0,0,0,0.05), 0 1px 0 0 rgba(0,0,0,0.06)`
               }}
-              className={`w-full py-2.5 sticky top-0 z-40 backdrop-blur-3xl transition-all ${
-                isDark ? 'bg-[#08090d]/85' : 'bg-[#f6f7fb]/90'
+              className={`w-full sticky top-0 z-40 backdrop-blur-3xl transition-all duration-300 ${
+                isSearchHeaderMini ? 'py-1 sm:py-1.5' : 'py-2.5 sm:py-3.5'
+              } ${
+                isDark ? 'bg-[#08090d]/90' : 'bg-[#f6f7fb]/92'
               }`}
             >
-              <div className="max-w-7xl mx-auto px-4 flex items-center justify-between gap-4">
-                <SearchBar 
-                  onSearch={handleSearch} 
-                  isCompact={true} 
-                  defaultQuery={activeTab.query}
-                  isDeepSearch={isDeepSearch}
-                  setIsDeepSearch={setIsDeepSearch}
-                  isDark={isDark}
-                  currentTheme={currentTheme}
-                />
+              <div className="max-w-7xl mx-auto px-3 sm:px-5 flex items-center justify-between gap-3 sm:gap-5">
+                
+                {/* 🌟 1. SOL TARAF: MİNİMALİST APPLE TARZINDA LOGO VE İSİM */}
+                <button
+                  onClick={handleHomeClick}
+                  className="flex items-center gap-2 sm:gap-2.5 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left"
+                  title="Ana Sayfaya Dön"
+                >
+                  {/* Apple Squircle Compass Icon */}
+                  <div 
+                    style={{
+                      boxShadow: isDark
+                        ? '0 4px 14px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.2)'
+                        : '0 4px 14px rgba(0,0,0,0.08), inset 0 1px 1px rgba(255,255,255,0.8)'
+                    }}
+                    className={`${
+                      isSearchHeaderMini ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 sm:w-9 sm:h-9 rounded-xl'
+                    } flex items-center justify-center border transition-all duration-300 group-hover:scale-105 backdrop-blur-xl ${
+                      isDark ? 'bg-white/10 border-white/20 text-sky-400' : 'bg-white/90 border-black/10 text-sky-600'
+                    }`}
+                  >
+                    <Compass className={`${isSearchHeaderMini ? 'w-3.5 h-3.5' : 'w-4 h-4 sm:w-4.5 sm:h-4.5'} transition-transform duration-500 group-hover:rotate-45`} />
+                  </div>
+
+                  {/* Minimalist Apple Logo & İsim */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`${
+                      isSearchHeaderMini ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
+                    } font-bold tracking-tight font-['Outfit',sans-serif] transition-all ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
+                      NovaTürk
+                    </span>
+                    <span className={`text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-md uppercase tracking-wider border ${
+                      isDark ? 'bg-white/10 text-sky-400 border-white/15' : 'bg-sky-50 text-sky-600 border-sky-200'
+                    }`}>
+                      AI
+                    </span>
+                  </div>
+                </button>
+
+                {/* 🌟 2. ORTA: KULLANICI AŞAĞI KAYDIRDIĞINDA MİNİMALİST KÜÇÜLEN ARAMA BARI */}
+                <div className="flex-1 flex items-center justify-start max-w-3xl">
+                  <SearchBar 
+                    onSearch={handleSearch} 
+                    isCompact={true} 
+                    isMini={isSearchHeaderMini}
+                    defaultQuery={activeTab.query}
+                    isDeepSearch={isDeepSearch}
+                    setIsDeepSearch={setIsDeepSearch}
+                    isDark={isDark}
+                    currentTheme={currentTheme}
+                  />
+                </div>
+
+                {/* Sağ Taraf: İnce Boşluk Tutucu */}
+                <div className="hidden lg:block w-4" />
               </div>
             </div>
 
