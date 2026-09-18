@@ -222,10 +222,50 @@ app.get('/api/proxy', async (req, res) => {
         return `${attr}="${origin}/${path}"`;
       });
 
+      const proxyHookScript = `
+        <script>
+          (function() {
+            const PROXY_PREFIX = '/api/proxy?url=';
+            function wrapUrl(url) {
+              if (!url || typeof url !== 'string') return url;
+              if (url.startsWith('javascript:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#')) return url;
+              if (url.includes('/api/proxy?url=')) return url;
+              try {
+                const abs = new URL(url, window.location.href).href;
+                return window.location.origin + PROXY_PREFIX + encodeURIComponent(abs);
+              } catch(e) {
+                return url;
+              }
+            }
+
+            // Tıklanan her bağlantıyı NovaTürk Proxy Kalkanı içinde tut (yeni Chrome sekmesine kaçışı engeller)
+            document.addEventListener('click', function(e) {
+              const a = e.target && e.target.closest ? e.target.closest('a') : null;
+              if (a && a.href) {
+                const targetUrl = a.href;
+                if (!targetUrl.startsWith('javascript:') && !targetUrl.startsWith('#')) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.location.href = wrapUrl(targetUrl);
+                }
+              }
+            }, true);
+
+            // Form gönderimlerini yönlendir
+            document.addEventListener('submit', function(e) {
+              const form = e.target;
+              if (form && form.action) {
+                form.action = wrapUrl(form.action);
+              }
+            }, true);
+          })();
+        </script>
+      `;
+
       if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
+        html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${proxyHookScript}`);
       } else {
-        html = `${baseTag}\n${html}`;
+        html = `${baseTag}\n${proxyHookScript}\n${html}`;
       }
 
       // Frame-busting scriptlerini zararsız hale getir
