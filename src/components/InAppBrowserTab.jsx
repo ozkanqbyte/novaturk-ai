@@ -2,71 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, ExternalLink, BookOpen, 
   Lock, Sparkles, CheckCircle2, ArrowUpRight, ShieldAlert,
-  Globe, Check, Send, Bot, MessageSquare, Copy, RefreshCw, User
+  Globe, Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { unescapeHtml, API_BASE, getApiConfig } from '../services/searchService';
+import { unescapeHtml, API_BASE } from '../services/searchService';
 import { sound } from '../services/soundService';
-
-function generateSmartAiResponseClient(query, isClaude) {
-  const q = query.toLowerCase();
-  const brand = isClaude ? 'Claude 3.5 Sonnet' : 'ChatGPT-4o';
-
-  if (q.includes('kod') || q.includes('python') || q.includes('javascript') || q.includes('react') || q.includes('css') || q.includes('html') || q.includes('api') || q.includes('yaz') || q.includes('fonksiyon')) {
-    return `### 💻 ${brand} — Kodlama & Çözüm Analizi
-
-İstediğiniz senaryo için temiz ve optimize edilmiş kod mimarisi:
-
-\`\`\`javascript
-// NovaTürk AI — Hızlı ve Güvenilir İşlem Fonksiyonu
-async function executeTask(taskPayload) {
-  console.log('[NovaTurk Task] Başlatılıyor:', taskPayload);
-  try {
-    const response = await fetch('/api/status', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await response.json();
-    return { success: true, result: data };
-  } catch (error) {
-    console.error('[NovaTurk Task Hatası]:', error);
-    return { success: false, error: error.message };
-  }
-}
-\`\`\`
-
-#### 📌 Çözümün Önemli Noktaları:
-1. **Hata Yönetimi (Try/Catch):** Olası ağ kopmalarında uygulamanın çökmesini engeller.
-2. **Asenkron Yapı (Async/Await):** Kullanıcı arayüzünü kilitlemeden arka planda akıcı çalışır.
-3. **Temiz Çıktı Standardı:** Dönüş değerleri tek tip \`{ success, result }\` nesnesinde toplanmıştır.`;
-  }
-
-  if (q.includes('kuantum') || q.includes('quantum') || q.includes('fizik') || q.includes('bilim')) {
-    return `### ⚛️ ${brand} — Kuantum Bilişim ve Çalışma Mantığı
-
-Klasik bilgisayarlar veriyi **bit**'ler (0 veya 1) ile işlerken; kuantum bilgisayarlar **kubit (qubit)** adı verilen kuantum bitlerini kullanır.
-
-#### 1. Süperpozisyon (Superposition)
-Bir kubit, aynı anda hem 0 hem de 1 durumlarının olasılıksal bir kombinasyonunda bulunabilir. Bu durum, paralel hesaplama kapasitesini katlanarak artırır.
-
-#### 2. Kuantum Dolanıklık (Quantum Entanglement)
-İki kubit birbirine dolandığında, aralarındaki mesafe ne olursa olsun birinin durumu anında diğerini belirler.
-
-#### 3. Kuantum Üstünlüğü (Quantum Supremacy)
-Klasik süper bilgisayarların binlerce yılda yapabileceği karmaşık kimyasal simülasyonları kuantum işlemciler dakikalar içinde tamamlayabilir.`;
-  }
-
-  return `### 💡 ${brand} — Akıllı Yanıt & Çözüm
-
-"${query}" sorunuzu NovaTürk AI Studio kapsamında detaylıca inceledim.
-
-#### 🔍 Temel Tespitler & Değerlendirme:
-- **Genel Bakış:** Belirttiğiniz konu, modern teknoloji ve veri mimarisi standartlarında stratejik öneme sahiptir.
-- **En İyi Uygulama (Best Practice):** Bu süreçte doğrudan doğrulanmış kaynaklar ve temiz mimari adımları izlenmelidir.
-- **NovaTürk Güvencesi:** NovaTürk motoru tüm kaynakları reklam ve manipülasyon filtrelerinden geçirerek saf bilgi sunar.
-
-İlave bir kodlama örneği, teknik karşılaştırma veya adım adım rehber isterseniz lütfen belirtin, anında detaylandıralım!`;
-}
 
 const isElectronApp = () => {
   if (typeof window !== 'undefined') {
@@ -126,138 +66,24 @@ export default function InAppBrowserTab({
   const [connectedUser, setConnectedUser] = useState(null);
   const [authDismissed, setAuthDismissed] = useState(false);
 
-  // 🤖 AI Studio Tespit ve Yönetimi (Claude & ChatGPT)
-  const isClaudeTab = Boolean(
-    (currentUrl && (currentUrl.includes('claude.ai') || currentUrl.includes('claude.com'))) ||
-    (tab.title && tab.title.toLowerCase().includes('claude'))
-  );
-
-  const isChatGPTTab = Boolean(
-    (currentUrl && (currentUrl.includes('chatgpt.com') || currentUrl.includes('chat.openai.com') || currentUrl.includes('openai.com'))) ||
-    (tab.title && tab.title.toLowerCase().includes('chatgpt'))
-  );
-
-  const isAiStudio = isClaudeTab || isChatGPTTab;
-  const aiModelName = isClaudeTab ? 'Claude 3.5 Sonnet' : 'ChatGPT-4o';
-  const aiBrandColor = isClaudeTab ? '#d97706' : '#10b981';
-
-  const [aiSubMode, setAiSubMode] = useState('studio'); // 'studio' | 'web'
-  const [chatMessages, setChatMessages] = useState(() => [
-    {
-      id: 'init-1',
-      role: 'assistant',
-      text: isClaudeTab 
-        ? "Merhaba! Ben Claude 3.5 Sonnet. NovaTürk AI Studio içinde doğrudan çalışıyorum. Hiçbir hesap engeli, kısıtlama veya 404 hatası olmadan; ileri düzey kodlama, derin veri analizi, karmaşık mantık yürütme veya Türkçe içerik üretiminde sana yardımcı olmaya hazırım.\n\nBugün üzerinde çalıştığın konuyu anlat, birlikte çözelim!"
-        : "Merhaba! Ben ChatGPT-4o. NovaTürk AI ekosisteminde sana rehberlik etmek için buradayım. Kodlama, yaratıcı metinler veya güncel konularda sana nasıl yardımcı olabilirim?",
-      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  // 🛡️ Akıllı Rota Normalizasyonu (Claude ve ChatGPT gibi sitelerin resmi sürümlerine yönlendir)
+  let targetProxyUrl = currentUrl;
+  try {
+    const parsed = new URL(currentUrl);
+    if (
+      parsed.hostname.includes('claude.ai') ||
+      (parsed.hostname.includes('claude.com') && (
+        parsed.pathname.includes('product') ||
+        parsed.pathname.includes('overview') ||
+        parsed.pathname.includes('login') ||
+        parsed.pathname.includes('chat')
+      ))
+    ) {
+      targetProxyUrl = 'https://claude.com/';
+    } else if (parsed.hostname.includes('chatgpt.com') || parsed.hostname.includes('chat.openai.com')) {
+      targetProxyUrl = 'https://openai.com/';
     }
-  ]);
-  const [inputPrompt, setInputPrompt] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [copiedId, setCopiedId] = useState(null);
-  const chatScrollRef = useRef(null);
-
-  const normalizedWebUrl = isClaudeTab 
-    ? 'https://claude.com/' 
-    : (isChatGPTTab ? 'https://openai.com/' : currentUrl);
-
-  const handleSendMessage = async (customText) => {
-    const textToSend = (customText || inputPrompt || '').trim();
-    if (!textToSend || isAiLoading) return;
-
-    sound.playClick();
-    const userMsgId = 'u-' + Date.now();
-    const userMsg = {
-      id: userMsgId,
-      role: 'user',
-      text: textToSend,
-      time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setChatMessages(prev => [...prev, userMsg]);
-    setInputPrompt('');
-    setIsAiLoading(true);
-
-    setTimeout(() => {
-      if (chatScrollRef.current) {
-        chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-      }
-    }, 50);
-
-    try {
-      const apiCfg = getApiConfig();
-      let replyText = '';
-
-      if (apiCfg && apiCfg.geminiApiKey) {
-        try {
-          const sys = isClaudeTab
-            ? "Sen Anthropic tarafından geliştirilen Claude 3.5 Sonnet yapay zeka modelisin. NovaTürk AI Studio bünyesinde kullanıcıya en yüksek zeka, empati, kusursuz Türkçe ve teknik derinlikle yanıt ver. Kod bloklarını ``` ile biçimlendir."
-            : "Sen OpenAI tarafından geliştirilen ChatGPT-4o modelisin. Kullanıcıya açık, net ve pratik çözümler sun.";
-          
-          const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiCfg.geminiApiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ role: 'user', parts: [{ text: `${sys}\n\nKullanıcı: ${textToSend}` }] }]
-            })
-          });
-          if (gRes.ok) {
-            const data = await gRes.json();
-            replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          }
-        } catch(e) {
-          console.warn('[AI Studio] Local Gemini API error:', e);
-        }
-      }
-
-      if (!replyText) {
-        try {
-          const res = await fetch(`${API_BASE}/api/ai-chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: textToSend,
-              model: isClaudeTab ? 'claude' : 'chatgpt'
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            replyText = data.reply;
-          }
-        } catch(e) {
-          console.warn('[AI Studio] Backend /api/ai-chat error:', e);
-        }
-      }
-
-      if (!replyText) {
-        replyText = generateSmartAiResponseClient(textToSend, isClaudeTab);
-      }
-
-      const botMsg = {
-        id: 'b-' + Date.now(),
-        role: 'assistant',
-        text: replyText,
-        time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-      };
-      setChatMessages(prev => [...prev, botMsg]);
-      sound.playSuccess();
-    } catch (err) {
-      const errMsg = {
-        id: 'err-' + Date.now(),
-        role: 'assistant',
-        text: `⚠️ Yanıt oluşturulurken bir bağlantı hatası oluştu: ${err.message}. Lütfen tekrar deneyin.`,
-        time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-      };
-      setChatMessages(prev => [...prev, errMsg]);
-    } finally {
-      setIsAiLoading(false);
-      setTimeout(() => {
-        if (chatScrollRef.current) {
-          chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-        }
-      }, 50);
-    }
-  };
+  } catch(e) {}
 
   const navigateToYouTube = () => {
     setAuthDismissed(true);
@@ -473,340 +299,7 @@ export default function InAppBrowserTab({
       {/* 🌟 %100 TAM EKRAN İÇERİK ALANI (SIFIR ÇERÇEVE, SIFIR BOŞLUK) */}
       <div className="flex-1 w-full h-full relative overflow-hidden bg-white">
         
-        {isAiStudio ? (
-          /* ============================================================ */
-          /* 🤖 1. AI WORKSPACE MODU (CLAUDE & CHATGPT)                    */
-          /* ============================================================ */
-          <div className="w-full h-full flex flex-col bg-[#07090e] text-slate-100 overflow-hidden relative font-['Outfit',sans-serif]">
-            {/* Üst Bilgi & Mod Değiştirici Bar */}
-            <div className="h-14 px-4 sm:px-6 bg-[#0d121f]/90 border-b border-white/10 flex items-center justify-between shrink-0 backdrop-blur-md z-20">
-              <div className="flex items-center gap-3">
-                <div 
-                  style={{ backgroundColor: `${aiBrandColor}20`, borderColor: `${aiBrandColor}50` }}
-                  className="w-8 h-8 rounded-xl border flex items-center justify-center shadow-lg"
-                >
-                  {isClaudeTab ? (
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                  ) : (
-                    <Bot className="w-4 h-4 text-emerald-400" />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-white">{aiModelName}</span>
-                    <span 
-                      style={{ backgroundColor: `${aiBrandColor}25`, color: aiBrandColor }}
-                      className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
-                    >
-                      {isClaudeTab ? 'Anthropic' : 'OpenAI'}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>NovaTürk Entegre • Kesintisiz Canlı Sohbet</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Segmented View Switcher */}
-              <div className="flex items-center gap-2">
-                <div className="bg-black/40 p-1 rounded-xl border border-white/10 flex items-center gap-1 text-xs">
-                  <button
-                    onClick={() => {
-                      sound.playClick();
-                      setAiSubMode('studio');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      aiSubMode === 'studio'
-                        ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <Bot className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Canlı AI Sohbeti</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      sound.playClick();
-                      setAiSubMode('web');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                      aiSubMode === 'web'
-                        ? 'bg-gradient-to-r from-sky-600 to-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white hover:bg-white/5'
-                    }`}
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Resmî Web Portalı</span>
-                  </button>
-                </div>
-
-                <a
-                  href={currentUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                  title="Yeni Sekmede Doğrudan Aç"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </a>
-              </div>
-            </div>
-
-            {/* Gövde: Stüdyo Sohbeti veya Canlı Web */}
-            {aiSubMode === 'studio' ? (
-              <div className="flex-1 flex flex-col h-[calc(100%-3.5rem)] overflow-hidden">
-                {/* Mesaj Akışı */}
-                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-                  {chatMessages.length <= 1 && (
-                    <div className="max-w-2xl mx-auto my-6 text-center space-y-4 animate-fadeIn">
-                      <div 
-                        style={{ backgroundColor: `${aiBrandColor}15`, borderColor: `${aiBrandColor}30` }}
-                        className="w-16 h-16 rounded-2xl border mx-auto flex items-center justify-center shadow-xl shadow-amber-500/10"
-                      >
-                        <Sparkles className="w-8 h-8 text-amber-400 animate-pulse" />
-                      </div>
-                      <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                        {isClaudeTab ? 'Claude 3.5 Sonnet Stüdyosu' : 'ChatGPT-4o Stüdyosu'}
-                      </h2>
-                      <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto leading-relaxed">
-                        NovaTürk AI motoru ile doğrudan entegre. Giriş engeli veya 404 hatası olmadan hemen soru sorun, kod yazdırın veya analiz isteyin.
-                      </p>
-
-                      {/* Hızlı Başlangıç Butonları */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl mx-auto pt-2 text-left">
-                        {[
-                          { icon: '💻', text: 'Python ile asenkron veri işleme ve API istemcisi yaz' },
-                          { icon: '🧠', text: 'Kuantum bilişimi ve çalışma prensibini basitçe açıkla' },
-                          { icon: '⚡', text: 'Web sitelerinde performans optimizasyonu için taktikler' },
-                          { icon: '📊', text: '2026 yılı yapay zeka ve model trendlerini karşılaştır' }
-                        ].map((item, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSendMessage(item.text)}
-                            className="p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/40 text-left text-xs text-slate-200 transition-all flex items-center gap-2.5 group cursor-pointer"
-                          >
-                            <span className="text-base">{item.icon}</span>
-                            <span className="group-hover:text-amber-300 transition-colors line-clamp-2">{item.text}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {chatMessages.map((msg) => (
-                    <div 
-                      key={msg.id}
-                      className={`flex gap-3 max-w-3xl mx-auto animate-fadeIn ${
-                        msg.role === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
-                    >
-                      {msg.role !== 'user' && (
-                        <div 
-                          style={{ backgroundColor: `${aiBrandColor}20`, borderColor: `${aiBrandColor}40` }}
-                          className="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 mt-1 shadow"
-                        >
-                          <Bot className="w-4 h-4 text-amber-400" />
-                        </div>
-                      )}
-
-                      <div 
-                        className={`rounded-2xl p-4 text-xs sm:text-sm leading-relaxed max-w-[85%] ${
-                          msg.role === 'user'
-                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-br-none shadow-lg'
-                            : 'bg-[#111624] border border-white/10 text-slate-200 rounded-bl-none shadow-xl'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-4 mb-1.5 opacity-60 text-[10px]">
-                          <span className="font-semibold">{msg.role === 'user' ? 'Siz' : aiModelName}</span>
-                          <span>{msg.time}</span>
-                        </div>
-
-                        <div className="prose prose-invert max-w-none text-xs sm:text-sm break-words whitespace-pre-wrap">
-                          {msg.text}
-                        </div>
-
-                        {msg.role !== 'user' && (
-                          <div className="mt-3 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400">
-                            <span className="flex items-center gap-1 text-emerald-400">
-                              <ShieldCheck className="w-3 h-3" /> NovaTürk Doğrulandı
-                            </span>
-                            <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(msg.text);
-                                setCopiedId(msg.id);
-                                setTimeout(() => setCopiedId(null), 2000);
-                              }}
-                              className="hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-                            >
-                              {copiedId === msg.id ? (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-400" />
-                                  <span className="text-emerald-400">Kopyalandı</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3 h-3" />
-                                  <span>Kopyala</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {msg.role === 'user' && (
-                        <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0 mt-1 shadow text-blue-400">
-                          <User className="w-4 h-4" />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-
-                  {isAiLoading && (
-                    <div className="flex gap-3 max-w-3xl mx-auto items-center animate-pulse">
-                      <div 
-                        style={{ backgroundColor: `${aiBrandColor}20` }}
-                        className="w-8 h-8 rounded-xl border border-amber-500/40 flex items-center justify-center shrink-0"
-                      >
-                        <Bot className="w-4 h-4 text-amber-400 animate-spin" />
-                      </div>
-                      <div className="p-3.5 rounded-2xl bg-[#111624] border border-white/10 text-xs text-amber-400 flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                        <span>{aiModelName} düşünüyor ve çözüm oluşturuyor...</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Alt Mesaj Yazma Alanı */}
-                <div className="p-3 sm:p-4 bg-[#0d121f]/90 border-t border-white/10 shrink-0 backdrop-blur-md">
-                  <form 
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleSendMessage();
-                    }}
-                    className="max-w-3xl mx-auto flex items-center gap-2"
-                  >
-                    <input
-                      type="text"
-                      value={inputPrompt}
-                      onChange={(e) => setInputPrompt(e.target.value)}
-                      placeholder={`${aiModelName}'e bir soru sorun veya kod isteyin...`}
-                      disabled={isAiLoading}
-                      className="flex-1 bg-black/40 border border-white/15 focus:border-amber-400/80 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder:text-slate-500 focus:outline-none transition-colors"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isAiLoading || !inputPrompt.trim()}
-                      style={{ backgroundColor: aiBrandColor }}
-                      className="px-5 py-3 rounded-xl font-bold text-white text-xs sm:text-sm flex items-center gap-2 shadow-lg hover:opacity-90 disabled:opacity-40 transition-all cursor-pointer hover:scale-105 active:scale-95"
-                    >
-                      <span>Gönder</span>
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
-                  </form>
-                </div>
-              </div>
-            ) : (
-              /* CANLI WEB GÖRÜNÜMÜ */
-              <div className="flex-1 w-full h-full relative bg-white">
-                {isElectron ? (
-                  <webview
-                    ref={iframeRef}
-                    key={reloadKey}
-                    src={normalizedWebUrl}
-                    partition={tab.isIncognito ? "nopersist_incognito" : "persist:novaturk_browsing"}
-                    allowpopups="true"
-                    className="w-full h-full border-0 absolute inset-0"
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                ) : (
-                  <iframe
-                    ref={iframeRef}
-                    key={reloadKey}
-                    src={`${API_BASE}/api/proxy?url=${encodeURIComponent(normalizedWebUrl)}`}
-                    title={cleanTitle}
-                    className="w-full h-full border-0 absolute inset-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; microphone; camera; web-share"
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        ) : viewMode === 'iframe' && isBlocked && !forceLive ? (
-          /* DURUM 1: SİTE İFRAME KORUMASI UYGULUYORSA VE CANLI WEB SEÇİLDİYSE */
-          <div className={`w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-6 ${
-            isDark ? 'bg-[#080a10] text-slate-100' : 'bg-slate-50 text-slate-900'
-          }`}>
-            
-            <div className="relative">
-              <div 
-                style={{ backgroundColor: `${themeAccent}30` }}
-                className="w-20 h-20 rounded-3xl blur-xl absolute inset-0 -z-10"
-              />
-              <div className="w-16 h-16 rounded-3xl bg-white/10 border border-white/20 flex items-center justify-center shadow-lg">
-                <img 
-                  src={`https://www.google.com/s2/favicons?domain=${hostname}&sz=64`} 
-                  alt={hostname} 
-                  className="w-9 h-9 object-contain"
-                  onError={(e) => { e.target.style.display = 'none'; }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2 max-w-md mx-auto">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Resmî Platform Güvenlik Protokolü</span>
-              </div>
-              <h3 className="text-xl sm:text-2xl font-bold font-['Outfit',sans-serif] tracking-tight">
-                {cleanTitle}
-              </h3>
-              <p className="text-xs sm:text-sm opacity-70 leading-relaxed">
-                <strong>{hostname}</strong>, kullanıcı hesap güvenliğini sağlamak amacıyla normal web tarayıcılarında çerçeve içine gömülmeyi kısıtlar.
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full justify-center max-w-md">
-              <a
-                href={currentUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ backgroundColor: themeAccent }}
-                className="w-full sm:w-auto px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold text-white shadow-lg hover:opacity-95 transition-all flex items-center justify-center gap-2 hover:scale-105"
-              >
-                <span>{hostname}'e Doğrudan Giriş Yap</span>
-                <ArrowUpRight className="w-4 h-4" />
-              </a>
-
-              {setViewMode && (
-                <button
-                  onClick={() => setViewMode('reader')}
-                  className="w-full sm:w-auto px-5 py-3 rounded-2xl text-xs sm:text-sm font-semibold border border-white/15 hover:bg-white/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <BookOpen className="w-4 h-4 text-sky-400" />
-                  <span>NovaTürk Raporunu Oku</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3 text-[11px] opacity-60">
-              <span>💡 NovaTürk PC Masaüstü uygulamasında kısıtlama yoktur.</span>
-              <span>•</span>
-              <button
-                onClick={() => {
-                  sound.playClick();
-                  setForceLive(true);
-                }}
-                className="text-sky-400 hover:underline font-mono cursor-pointer"
-              >
-                Canlı Çerçeveyi Yine de Dene ⚡
-              </button>
-            </div>
-          </div>
-        ) : viewMode === 'iframe' ? (
+        {viewMode === 'iframe' ? (
           /* ============================================================ */
           /* DURUM 2: 🌟 %100 TAM EKRAN CANLI WEB (ELECTRON WEBVIEW / IFRAME) */
           /* ============================================================ */
@@ -938,7 +431,7 @@ export default function InAppBrowserTab({
                     <span>Canlı Proxy Kalkanı Aktif</span>
                   </div>
                   <a
-                    href={currentUrl}
+                    href={targetProxyUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-1 rounded-full bg-slate-900/85 border border-white/20 text-slate-300 hover:text-white backdrop-blur-md shadow-lg transition-colors"
@@ -952,9 +445,9 @@ export default function InAppBrowserTab({
                   ref={iframeRef}
                   key={reloadKey}
                   src={
-                    (currentUrl && currentUrl.startsWith('http'))
-                      ? `${API_BASE}/api/proxy?url=${encodeURIComponent(currentUrl)}`
-                      : currentUrl
+                    (targetProxyUrl && targetProxyUrl.startsWith('http'))
+                      ? `${API_BASE}/api/proxy?url=${encodeURIComponent(targetProxyUrl)}`
+                      : targetProxyUrl
                   }
                   title={cleanTitle}
                   className="w-full h-full border-0 absolute inset-0"

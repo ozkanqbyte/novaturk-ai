@@ -343,14 +343,21 @@ app.get('/api/proxy', async (req, res) => {
     if (contentType.includes('text/html')) {
       let html = await upstreamRes.text();
       const origin = parsedUrl.origin;
-      const baseTag = `<base href="${origin}/">`;
 
-      // Kök-göreceli bağlantı ve varlıkları (src, href, action, poster) tam URL'e dönüştür
+      // 1. Güvenlik ve çakışma yaratan başlık meta etiketlerini ve eski base tag'lerini temizle
+      html = html.replace(/<base\b[^>]*>/gi, '');
+      html = html.replace(/<meta\b[^>]*http-equiv=["']?(?:content-security-policy|x-frame-options)["']?[^>]*>/gi, '');
+
+      // 2. Kök-göreceli varlık ve bağlantıları tam site adresine dönüştür
       html = html.replace(/(src|href|action|poster)=["']\/(?!\/)([^"']*)["']/gi, (match, attr, path) => {
         return `${attr}="${origin}/${path}"`;
       });
+      // CSS içerisindeki root-relative url(/...) yollarını tam adrese dönüştür
+      html = html.replace(/url\(\s*["']?\/(?!\/)([^"')]+)["']?\s*\)/gi, (match, path) => {
+        return `url("${origin}/${path}")`;
+      });
 
-      // Next.js SPA hidrasyon scriptlerinin proxy ortamında 404 tetiklemesini engelle (SSR HTML'i saf olarak koru)
+      // 3. Next.js SPA hidrasyon scriptlerinin proxy ortamında 404 tetiklemesini engelle (SSR HTML'i saf olarak koru)
       html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, (tag) => {
         if (tag.includes('_next/static/chunks')) {
           return '<!-- [NovaTurk] next chunk disarmed to preserve full SSR content -->';
@@ -362,14 +369,15 @@ app.get('/api/proxy', async (req, res) => {
         <script>
           (function() {
             // NovaTürk Akıllı Proxy İstemci Kancası
-
+            const SITE_ORIGIN = ${JSON.stringify(origin)};
             const PROXY_PREFIX = '/api/proxy?url=';
+
             function wrapUrl(url) {
               if (!url || typeof url !== 'string') return url;
               if (url.startsWith('javascript:') || url.startsWith('mailto:') || url.startsWith('tel:') || url.startsWith('#')) return url;
               if (url.includes('/api/proxy?url=')) return url;
               try {
-                const abs = new URL(url, window.location.href).href;
+                const abs = new URL(url, SITE_ORIGIN).href;
                 return window.location.origin + PROXY_PREFIX + encodeURIComponent(abs);
               } catch(e) {
                 return url;
@@ -384,6 +392,7 @@ app.get('/api/proxy', async (req, res) => {
                 if (!targetUrl.startsWith('javascript:') && !targetUrl.startsWith('#')) {
                   e.preventDefault();
                   e.stopPropagation();
+                  a.removeAttribute('target');
                   window.location.href = wrapUrl(targetUrl);
                 }
               }
@@ -400,10 +409,16 @@ app.get('/api/proxy', async (req, res) => {
         </script>
       `;
 
+      const revealStyle = `
+        <style>
+          main, [data-reveal], [style*="--reveal"], section, article { opacity: 1 !important; visibility: visible !important; }
+        </style>
+      `;
+
       if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}\n  ${proxyHookScript}`);
+        html = html.replace(/(<head[^>]*>)/i, `$1\n  ${revealStyle}\n  ${proxyHookScript}`);
       } else {
-        html = `${baseTag}\n${proxyHookScript}\n${html}`;
+        html = `${revealStyle}\n${proxyHookScript}\n${html}`;
       }
 
       // Frame-busting scriptlerini zararsız hale getir
