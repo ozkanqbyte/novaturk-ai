@@ -20,7 +20,9 @@ try {
     onSearchText: (cb) => ipcRenderer.on('search-text', (e, text) => cb(text)),
     onOpenLinkTab: (cb) => ipcRenderer.on('open-link-tab', (e, url) => cb(url)),
     onGoBack: (cb) => ipcRenderer.on('browser-go-back', () => cb()),
-    onGoForward: (cb) => ipcRenderer.on('browser-go-forward', () => cb())
+    onGoForward: (cb) => ipcRenderer.on('browser-go-forward', () => cb()),
+    openDevTools: () => ipcRenderer.send('open-dev-tools'),
+    inspectElement: (x, y) => ipcRenderer.send('inspect-element', { x, y })
   };
 } catch (err) {
   console.error('[Preload] Hata:', err);

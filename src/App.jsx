@@ -23,6 +23,9 @@ import SponsoredShowcase from './components/SponsoredShowcase';
 import DynamicIsland from './components/DynamicIsland';
 import DealHunterWidget from './components/DealHunterWidget';
 import BusinessAdsModal from './components/BusinessAdsModal';
+import MobileBottomBar from './components/MobileBottomBar';
+import MobileTopBar from './components/MobileTopBar';
+import MobileTabsSheet from './components/MobileTabsSheet';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
   getBookmarks, addBookmark, removeBookmark, isBookmarked 
@@ -67,13 +70,15 @@ export default function App() {
     { 
       id: 'tab_default', 
       type: 'search', 
-      title: 'Yeni Sekme', 
+      title: 'Ana Sayfa', 
       query: '', 
       results: null, 
       hasSearched: false, 
       isLoading: false,
       history: [''],
-      historyIndex: 0
+      historyIndex: 0,
+      isHome: true,
+      isNewTab: false
     }
   ]);
   const [activeTabId, setActiveTabId] = useState('tab_default');
@@ -87,6 +92,63 @@ export default function App() {
     results: null,
     hasSearched: false,
     isLoading: false
+  };
+
+  // 📱 Mobil Sekme Kartları Bottom Sheet State'i
+  const [isMobileTabsOpen, setIsMobileTabsOpen] = useState(false);
+
+  // 🎵 Mobil Bar için Canlı Medya Dinleyicisi
+  const [mediaState, setMediaState] = useState(null);
+
+  useEffect(() => {
+    const handleMediaUpdate = (e) => {
+      if (e.detail) {
+        setMediaState(e.detail);
+      }
+    };
+    window.addEventListener('novaturk:media-status-update', handleMediaUpdate);
+    return () => window.removeEventListener('novaturk:media-status-update', handleMediaUpdate);
+  }, []);
+
+  const activeMediaTab = tabs.find(t => 
+    t.type === 'web' && 
+    (t.url?.includes('youtube.com') || t.url?.includes('youtu.be') || t.url?.includes('spotify') || t.title?.toLowerCase().includes('youtube'))
+  );
+
+  const handleToggleMediaPlay = () => {
+    const targetTabId = mediaState?.tabId || activeMediaTab?.id;
+    if (targetTabId) {
+      window.dispatchEvent(new CustomEvent('novaturk:media-command', {
+        detail: { tabId: targetTabId, action: 'toggle' }
+      }));
+    }
+  };
+
+  const handleExpandIsland = () => {
+    window.dispatchEvent(new CustomEvent('novaturk:expand-island'));
+  };
+
+  // 🔍 Arama Sonuçları Başlığı Küçülme (Dynamic Collapsible Search Bar) State'i
+  const [isSearchHeaderMini, setIsSearchHeaderMini] = useState(false);
+  const lastScrollTopRef = useRef(0);
+
+  const handleSearchResultsScroll = (e) => {
+    const currentScrollTop = e.currentTarget.scrollTop;
+
+    // 1. En yukarıdaysa (<= 25px): Kesinlikle tam boyut geri gelsin
+    if (currentScrollTop <= 25) {
+      setIsSearchHeaderMini(false);
+    } 
+    // 2. Aşağı kaydırınca (currentScrollTop artıyor ve > 50px): Küçülsün ve minimalist olsun
+    else if (currentScrollTop > lastScrollTopRef.current && currentScrollTop > 50) {
+      setIsSearchHeaderMini(true);
+    } 
+    // 3. Yukarı kaydırınca (currentScrollTop azalıyor): Geri gelsin!
+    else if (currentScrollTop < lastScrollTopRef.current - 6) {
+      setIsSearchHeaderMini(false);
+    }
+
+    lastScrollTopRef.current = currentScrollTop;
   };
 
   // 10 Cam & Gradient Teması State'i
@@ -137,26 +199,52 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [tabs, activeTabId]);
 
-  // 🌟 Global Sağ Tık Menüsü (Kopyala, Yapıştır, Geri, İleri, Ara)
+  // 🌟 Global Sağ Tık Menüsü (Kopyala, Yapıştır, İncele, Kaynak, Resim)
   useEffect(() => {
     const handleGlobalContextMenu = (e) => {
+      // 💡 Shift + Sağ Tık: Doğrudan Google Chrome'un kendi yerel sağ tık menüsünü aç
+      if (e.shiftKey) {
+        setContextMenuData(null);
+        return;
+      }
+
       e.preventDefault();
       const sel = window.getSelection()?.toString() || '';
       let targetLink = '';
       const linkEl = e.target.closest('a');
       if (linkEl && linkEl.href) targetLink = linkEl.href;
 
+      let imgSrc = '';
+      const imgEl = e.target.closest('img');
+      if (imgEl && imgEl.src) imgSrc = imgEl.src;
+
       setContextMenuData({
         x: e.clientX,
         y: e.clientY,
         visible: true,
         selectedText: sel,
-        linkUrl: targetLink
+        linkUrl: targetLink,
+        srcUrl: imgSrc
       });
     };
 
+    // 🌟 Tümünü Seç yapıldıktan sonra ekranda bir yere tıklandığında seçimi temizle (Mavi kilitlenmeyi çözer)
+    const handleGlobalClickToDeselect = (e) => {
+      if (e.target.closest('input') || e.target.closest('textarea')) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        if (!e.target.closest('.selectable-text') && !e.target.closest('p') && !e.target.closest('h1') && !e.target.closest('h2') && !e.target.closest('h3')) {
+          sel.removeAllRanges();
+        }
+      }
+    };
+
     window.addEventListener('contextmenu', handleGlobalContextMenu);
-    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
+    window.addEventListener('click', handleGlobalClickToDeselect);
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalContextMenu);
+      window.removeEventListener('click', handleGlobalClickToDeselect);
+    };
   }, []);
 
   // Canlı Tema Seçimi
@@ -179,7 +267,9 @@ export default function App() {
       results: null,
       hasSearched: false,
       isLoading: false,
-      isIncognito: false
+      isIncognito: false,
+      isHome: false,
+      isNewTab: true
     };
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
@@ -549,6 +639,7 @@ const isElectronApp = () => {
   const handleSearch = async (queryToSearch) => {
     if (!queryToSearch || !queryToSearch.trim()) return;
     
+    setIsSearchHeaderMini(false);
     sound.playClick();
     const cleanQ = unescapeHtml(queryToSearch.trim());
     
@@ -597,12 +688,43 @@ const isElectronApp = () => {
     }
   };
 
+  // 6.1 Arama Terimini Yeni Sekmede Aç ve Hemen Ara
+  const handleOpenSearchInNewTab = async (queryToSearch) => {
+    if (!queryToSearch || !queryToSearch.trim()) return;
+    sound.playChime();
+    const cleanQ = unescapeHtml(queryToSearch.trim());
+    const newId = `search_${Date.now()}`;
+    const newTab = {
+      id: newId,
+      type: 'search',
+      title: `Arama: ${cleanQ.slice(0, 18)}${cleanQ.length > 18 ? '...' : ''}`,
+      query: cleanQ,
+      results: null,
+      hasSearched: true,
+      isLoading: true,
+      isIncognito: activeTab.isIncognito,
+      history: [cleanQ],
+      historyIndex: 0
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+    if (!activeTab.isIncognito) {
+      addSearchHistory(cleanQ);
+    }
+    try {
+      const data = await executeSearch(cleanQ, isDeepSearch);
+      setTabs(prev => prev.map(t => t.id === newId ? { ...t, results: data, isLoading: false } : t));
+    } catch {
+      setTabs(prev => prev.map(t => t.id === newId ? { ...t, isLoading: false } : t));
+    }
+  };
+
   // 7. Ana Sayfaya Dön (Logoya Tıklandığında)
   const handleHomeClick = () => {
     sound.playClick();
     setTabs(prev => prev.map(t => {
       if (t.id === activeTabId) {
-        return { ...t, hasSearched: false, results: null, query: '', title: 'Yeni Sekme' };
+        return { ...t, hasSearched: false, results: null, query: '', title: 'Ana Sayfa', isHome: true, isNewTab: false };
       }
       return t;
     }));
@@ -617,7 +739,7 @@ const isElectronApp = () => {
       {/* 🌟 10 Canlı Cam & Gradient Arka Planı (Arama Sayfasında Görünür) */}
       {activeTab.type === 'search' && <AuroraBackground currentTheme={currentTheme} isDark={isDark} />}
 
-      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR & ETKİLEŞİMLİ) */}
+      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR, SÜRÜKLENEBİLİR & ETKİLEŞİMLİ) */}
       <DynamicIsland 
         query={activeTab.query}
         isSearching={activeTab.isLoading}
@@ -626,6 +748,12 @@ const isElectronApp = () => {
         comparison={activeTab.results?.comparison}
         isDark={isDark}
         currentTheme={currentTheme}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={(id) => setActiveTabId(id)}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        onSearch={handleSearch}
         onScrollToTop={() => {
           const el = document.querySelector('.overflow-y-auto');
           if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
@@ -697,26 +825,43 @@ const isElectronApp = () => {
         />
       )}
 
-      {/* 🌟 4. TAM EKRAN İÇERİK ALANI */}
+      {/* 🌟 4. TAM EKRAN İÇERİK ALANI (KALICI SEKMELER & KESİNTİSİZ SES) */}
       <main className="flex-1 w-full h-full overflow-hidden flex flex-col relative z-10">
-        {activeTab.type === 'web' ? (
-          /* ============================================================ */
-          /* %100 TAM EKRAN WEB SEKME İÇİ TARAYICI                        */
-          /* ============================================================ */
-          <InAppBrowserTab 
-            key={activeTab.id}
-            tab={activeTab}
-            onClose={handleCloseTab}
-            onUpdateTab={handleUpdateTab}
-            isDark={isDark}
-            currentTheme={currentTheme}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            iframeRef={iframeRef}
-            reloadKey={reloadKey}
-            onContextMenu={setContextMenuData}
-          />
-        ) : !activeTab.hasSearched ? (
+        {/* ============================================================ */}
+        {/* KALICI WEB SEKMELERİ (ARKA PLANDA YOUTUBE SESİ ASLA KESİLMEZ) */}
+        {/* ============================================================ */}
+        {tabs.filter(t => t.type === 'web').map((webTab) => {
+          const isThisActive = activeTabId === webTab.id;
+          return (
+            <div
+              key={webTab.id}
+              className={`w-full h-full absolute inset-0 pb-[calc(60px+env(safe-area-inset-bottom,0px))] md:pb-0 ${isThisActive ? 'z-20' : 'z-0 pointer-events-none'}`}
+              style={{
+                visibility: isThisActive ? 'visible' : 'hidden',
+              }}
+            >
+              <InAppBrowserTab 
+                tab={webTab}
+                onClose={handleCloseTab}
+                onUpdateTab={handleUpdateTab}
+                isDark={isDark}
+                currentTheme={currentTheme}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                iframeRef={isThisActive ? iframeRef : undefined}
+                reloadKey={reloadKey}
+                onContextMenu={setContextMenuData}
+              />
+            </div>
+          );
+        })}
+
+        {/* ============================================================ */}
+        {/* EĞER AKTİF SEKME ARAMA / YENİ SEKME İSE GÖSTER               */}
+        {/* ============================================================ */}
+        {activeTab.type === 'search' && (
+          <div className="w-full h-full relative z-10 flex flex-col flex-1 overflow-hidden">
+            {!activeTab.hasSearched ? (
           activeTab.isIncognito ? (
             <IncognitoHeroView 
               onSearch={handleSearch}
@@ -731,19 +876,21 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME ANA SAYFASI)     */
           /* ============================================================ */
-          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col justify-between">
-            <div className="w-full max-w-4xl mx-auto px-4 py-8 sm:py-12 flex flex-col items-center text-center animate-fadeIn my-auto">
+          /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME BAŞLANGIÇ SAYFASI) */
+          /* ============================================================ */
+          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 pt-20 sm:pt-24 md:pt-28">
+            <div className="w-full max-w-3xl mx-auto px-4 flex flex-col items-center text-center animate-fadeIn">
               
-              {/* 🌟 GOOGLE TARZI ÇOK RENKLİ VE İNTERAKTİF NOVATÜRK LOGOSU & İSMİ */}
+              {/* 🌟 LOGO: HOME'DA BÜYÜK VE ASİL, YENİ SEKMEDE MİNİMALİST APPLE SAFARI */}
               <NovaTurkGoogleLogo 
                 isDark={isDark} 
                 currentTheme={currentTheme} 
-                showSubtitle={true} 
-                size="large" 
+                isMinimal={activeTab.isNewTab === true} 
+                showSubtitle={false} 
               />
 
-              {/* Apple VisionOS Search Bar */}
-              <div className="w-full max-w-2xl mb-4">
+              {/* 🔍 Arama Çubuğu (Apple tarzında bir tık aşağıda, ferah ve modern) */}
+              <div className="w-full max-w-2xl mt-7 sm:mt-9 mb-10 sm:mb-12">
                 <SearchBar 
                   onSearch={handleSearch} 
                   isCompact={false} 
@@ -752,29 +899,11 @@ const isElectronApp = () => {
                   setIsDeepSearch={setIsDeepSearch}
                   isDark={isDark}
                   currentTheme={currentTheme}
+                  autoFocus={activeTab.isNewTab}
                 />
               </div>
 
-              {/* 🌟 Ajan / Gizli Gezinti Hızlı Başlatıcı */}
-              <div className="mb-8">
-                <button
-                  onClick={handleNewIncognitoTab}
-                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-300 text-xs font-semibold backdrop-blur-md transition-all hover:scale-105 cursor-pointer shadow-sm group"
-                >
-                  <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                  <span>🕶️ Gizli Gezinti (Ajan Modu - Ctrl + Shift + N)</span>
-                </button>
-              </div>
-
-              {/* 🌟 MODEL 3: ANA EKRAN PRESTİJ VİTRİNİ & SPONSORLU PARTNERLER */}
-              <SponsoredShowcase
-                onSelectPartner={(partner) => handleOpenInAppTab({ link: partner.link, title: partner.title, displayLink: partner.displayLink })}
-                onOpenBusinessModal={() => setIsBusinessModalOpen(true)}
-                isDark={isDark}
-                currentTheme={currentTheme}
-              />
-
-              {/* 🌟 APPLE VISIONOS SPEED DIAL (SIK ZİYARET EDİLEN KISAYOLLAR) */}
+              {/* 🌟 1. APPLE SAFARI FAVORİLER (KULLANICININ EKLEDİĞİ ŞEYLER) */}
               <SpeedDialGrid 
                 bookmarks={bookmarks}
                 onSelectBookmark={handleSelectBookmark}
@@ -784,7 +913,7 @@ const isElectronApp = () => {
                 currentTheme={currentTheme}
               />
 
-              {/* 🌟 GOOGLE TARZI SON ZİYARET EDİLEN SİTELER VİTRİNİ */}
+              {/* 🌟 2. APPLE SAFARI SIK ZİYARET EDİLENLER */}
               <RecentVisitsSection 
                 history={historyList}
                 onSelectVisit={handleOmnibarNavigate}
@@ -794,150 +923,88 @@ const isElectronApp = () => {
                 }}
                 isDark={isDark}
               />
-
-              {/* Apple Minimalist Feature Pillars */}
-              <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
-                {[
-                  {
-                    icon: ShieldCheck,
-                    title: '50 Türk Sitesi İndeksi',
-                    desc: 'Webrazzi, AA, TÜBİTAK ve üniversitelerden çekilen reklamsız veritabanı.'
-                  },
-                  {
-                    icon: Bot,
-                    title: '4 Otonom Ajan',
-                    desc: 'Kâşif, Hâkim, Analist ve İcracı sorguyu eşzamanlı olarak işler.'
-                  },
-                  {
-                    icon: BookOpen,
-                    title: 'Reklamsız Okuyucu',
-                    desc: 'Siteden ayrılmadan, çerez ve reklamları temizlenmiş saf metni oku.'
-                  },
-                  {
-                    icon: Server,
-                    title: 'Admin Masası',
-                    desc: 'Crawler durumu, canlı indeksleme ve kara liste yönetim konsolu.'
-                  }
-                ].map((f, i) => {
-                  const Icon = f.icon;
-                  const accent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        sound.playClick();
-                        if (i === 3) setIsAdminOpen(true);
-                      }}
-                      className={`apple-glass-card rounded-2xl p-3.5 border cursor-pointer group transition-all duration-300 ${
-                        isDark ? 'border-white/8 hover:border-white/20' : 'border-black/6 hover:border-black/15'
-                      }`}
-                    >
-                      <div 
-                        style={{
-                          backgroundColor: `${accent}18`,
-                          borderColor: `${accent}35`,
-                          color: accent
-                        }}
-                        className="w-7 h-7 rounded-xl flex items-center justify-center mb-2.5 border transition-all duration-300 group-hover:scale-110 shadow-sm"
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <h3 className="text-xs font-semibold mb-0.5 tracking-tight group-hover:text-current transition-colors">
-                        {f.title}
-                      </h3>
-                      <p className={`text-[11px] leading-relaxed font-normal ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        {f.desc}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Minimalist Trust Indicator */}
-              <div className="mt-8 flex items-center justify-center gap-6 text-xs opacity-50">
-                <span>Sıfır Reklam</span>
-                <span>•</span>
-                <span>50 Yerli Web Sitesi</span>
-                <span>•</span>
-                <span>%100 Gizlilik</span>
-              </div>
-
             </div>
-
-            {/* Apple Minimalist Footer (Sadece Arama Sayfasında) */}
-            <footer className={`w-full border-t py-4 px-6 backdrop-blur-xl transition-colors ${
-              isDark ? 'border-white/10 bg-[#08090d]/70' : 'border-black/10 bg-[#f6f7fb]/70'
-            }`}>
-              <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs opacity-60">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold">NovaTürk AI</span>
-                  <span>•</span>
-                  <span>{currentTheme.name} Teması</span>
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsThemeModalOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity flex items-center gap-1 font-medium"
-                  >
-                    <Palette className="w-3.5 h-3.5" /> Temalar (10)
-                  </button>
-                  <span>•</span>
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsAdminOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity"
-                  >
-                    Admin Masası
-                  </button>
-                  <span>•</span>
-                  <button 
-                    onClick={() => {
-                      sound.playClick();
-                      setIsSettingsOpen(true);
-                    }}
-                    className="hover:opacity-100 transition-opacity font-semibold"
-                  >
-                    ⚙️ Sistem & Tarayıcı Ayarları
-                  </button>
-                </div>
-              </div>
-            </footer>
           </div>
         )
       ) : (
           /* ============================================================ */
           /* SEARCH RESULTS VIEW (FULL SCREEN SCROLLABLE)                 */
           /* ============================================================ */
-          <div className="w-full h-full flex-1 overflow-y-auto flex flex-col">
-            {/* Sticky Floating Glass Search Header */}
+          <div 
+            onScroll={handleSearchResultsScroll}
+            className="w-full h-full flex-1 overflow-y-auto flex flex-col pb-24 md:pb-0"
+          >
+            {/* Sticky Floating Glass Search Header (Apple VisionOS Collapsible) */}
             <div 
               style={{
                 boxShadow: isDark 
-                  ? `0 10px 30px -10px rgba(0,0,0,0.6), 0 1px 0 0 rgba(255,255,255,0.08)` 
-                  : `0 10px 30px -10px rgba(0,0,0,0.05), 0 1px 0 0 rgba(0,0,0,0.06)`
+                  ? isSearchHeaderMini
+                    ? `0 12px 32px -10px rgba(0,0,0,0.85), 0 1px 0 0 rgba(255,255,255,0.12)`
+                    : `0 10px 30px -10px rgba(0,0,0,0.6), 0 1px 0 0 rgba(255,255,255,0.08)` 
+                  : isSearchHeaderMini
+                    ? `0 12px 32px -10px rgba(0,0,0,0.12), 0 1px 0 0 rgba(0,0,0,0.1)`
+                    : `0 10px 30px -10px rgba(0,0,0,0.05), 0 1px 0 0 rgba(0,0,0,0.06)`
               }}
-              className={`w-full py-2.5 sticky top-0 z-40 backdrop-blur-3xl transition-all ${
-                isDark ? 'bg-[#08090d]/85' : 'bg-[#f6f7fb]/90'
+              className={`w-full sticky top-0 z-40 backdrop-blur-3xl transition-all duration-300 ${
+                isSearchHeaderMini ? 'py-1 sm:py-1.5' : 'py-2.5 sm:py-3.5'
+              } ${
+                isDark ? 'bg-[#08090d]/90' : 'bg-[#f6f7fb]/92'
               }`}
             >
-              <div className="max-w-7xl mx-auto px-4 flex items-center justify-between gap-4">
-                <SearchBar 
-                  onSearch={handleSearch} 
-                  isCompact={true} 
-                  defaultQuery={activeTab.query}
-                  isDeepSearch={isDeepSearch}
-                  setIsDeepSearch={setIsDeepSearch}
-                  isDark={isDark}
-                  currentTheme={currentTheme}
-                />
+              <div className="w-full max-w-7xl mx-auto px-4 flex items-center justify-start relative">
+                
+                {/* 🌟 1. AŞAĞIDAKİ KARTLARIN BİRAZ SOLUNDA YERLEŞEN APPLE LOGO (Google Desktop Tarzı) */}
+                <button
+                  onClick={handleHomeClick}
+                  className="flex items-center gap-2 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left xl:absolute xl:right-full xl:mr-4 2xl:mr-6 mr-3"
+                  title="Ana Sayfaya Dön"
+                >
+                  {/* Apple Squircle Compass Icon */}
+                  <div 
+                    style={{
+                      boxShadow: isDark
+                        ? '0 4px 14px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.2)'
+                        : '0 4px 14px rgba(0,0,0,0.08), inset 0 1px 1px rgba(255,255,255,0.8)'
+                    }}
+                    className={`${
+                      isSearchHeaderMini ? 'w-7 h-7 rounded-lg' : 'w-8 h-8 sm:w-8.5 sm:h-8.5 rounded-xl'
+                    } flex items-center justify-center border transition-all duration-300 group-hover:scale-105 backdrop-blur-xl ${
+                      isDark ? 'bg-white/10 border-white/20 text-sky-400' : 'bg-white/90 border-black/10 text-sky-600'
+                    }`}
+                  >
+                    <Compass className={`${isSearchHeaderMini ? 'w-3.5 h-3.5' : 'w-4 h-4'} transition-transform duration-500 group-hover:rotate-45`} />
+                  </div>
+
+                  {/* Minimalist Apple Logo & İsim */}
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
+                    <span className={`${
+                      isSearchHeaderMini ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
+                    } font-bold tracking-tight font-['Outfit',sans-serif] transition-all ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}>
+                      NovaTürk
+                    </span>
+                    <span className={`text-[8px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-md uppercase tracking-wider border ${
+                      isDark ? 'bg-white/10 text-sky-400 border-white/15' : 'bg-sky-50 text-sky-600 border-sky-200'
+                    }`}>
+                      AI
+                    </span>
+                  </div>
+                </button>
+
+                {/* 🌟 2. ARAMA BARI: AŞAĞIDAKİ KARTLARLA BİREBİR AYNI DİKEY HİZADA BAŞLAR */}
+                <div className="w-full max-w-xl sm:max-w-2xl">
+                  <SearchBar 
+                    onSearch={handleSearch} 
+                    isCompact={true} 
+                    isMini={isSearchHeaderMini}
+                    defaultQuery={activeTab.query}
+                    isDeepSearch={isDeepSearch}
+                    setIsDeepSearch={setIsDeepSearch}
+                    isDark={isDark}
+                    currentTheme={currentTheme}
+                  />
+                </div>
               </div>
             </div>
 
@@ -998,6 +1065,8 @@ const isElectronApp = () => {
             </footer>
           </div>
         )}
+          </div>
+        )}
       </main>
 
       {/* Kısayol / Yer İmi Ekleme Modalı */}
@@ -1014,7 +1083,13 @@ const isElectronApp = () => {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         isDark={isDark}
+        setIsDark={setIsDark}
         currentTheme={currentTheme}
+        onSelectTheme={handleSelectTheme}
+        onOpenThemeSelector={() => {
+          setIsSettingsOpen(false);
+          setIsThemeModalOpen(true);
+        }}
       />
 
       {/* Admin Masası Konsolu Modalı */}
@@ -1096,10 +1171,22 @@ const isElectronApp = () => {
       <HistoryModal 
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        onNavigate={handleOmnibarNavigate}
-        onNewTab={(url) => {
-          if (url) handleOpenInAppTab({ link: url, title: url });
-          else handleNewTab();
+        onNavigate={(target, item) => {
+          const isUrl = target && (target.startsWith('http://') || target.startsWith('https://') || (target.includes('.') && !target.includes(' ')));
+          if (isUrl) {
+            handleOmnibarNavigate(target);
+          } else {
+            handleSearch(target);
+          }
+        }}
+        onNewTab={(target, item) => {
+          const isUrl = target && (target.startsWith('http://') || target.startsWith('https://') || (target.includes('.') && !target.includes(' ')));
+          if (isUrl) {
+            const finalUrl = (target.startsWith('http://') || target.startsWith('https://')) ? target : `https://${target}`;
+            handleOpenInAppTab({ link: finalUrl, title: finalUrl }, true);
+          } else {
+            handleOpenSearchInNewTab(target);
+          }
         }}
         isDark={isDark}
       />
@@ -1115,6 +1202,57 @@ const isElectronApp = () => {
       <BusinessAdsModal 
         isOpen={isBusinessModalOpen}
         onClose={() => setIsBusinessModalOpen(false)}
+        isDark={isDark}
+        currentTheme={currentTheme}
+      />
+
+      {/* 🌟 MOBİL SAĞ ÜST KÖŞE AYARLAR VE KONTROL MERKEZİ (APPLE VISIONOS) */}
+      <MobileTopBar 
+        onHomeClick={handleHomeClick}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenThemeSelector={() => setIsThemeModalOpen(true)}
+        onOpenVpnModal={() => { setVpnState(getVpnState()); setIsVpnOpen(true); }}
+        onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        isVpnActive={vpnState.isActive}
+        isDark={isDark}
+        setIsDark={setIsDark}
+        currentTheme={currentTheme}
+        showHomeButton={activeTab.hasSearched || activeTab.type === 'web'}
+      />
+
+      {/* 📱 APPLE SAFARI iOS FLOATING GLASS ADRES & ARAMA KAPSÜLÜ (ALT BAR) */}
+      <MobileBottomBar 
+        tabs={tabs}
+        activeTabId={activeTabId}
+        activeTab={activeTab}
+        onNavigate={handleOmnibarNavigate}
+        onSearch={handleSearch}
+        onNewTab={handleNewTab}
+        onOpenTabsSheet={() => setIsMobileTabsOpen(true)}
+        onGoBack={handleOmnibarGoBack}
+        onGoForward={handleOmnibarGoForward}
+        canGoBack={(activeTab.historyIndex || 0) > 0}
+        canGoForward={(activeTab.historyIndex || 0) < ((activeTab.history || []).length - 1)}
+        onReload={handleOmnibarReload}
+        isDark={isDark}
+        currentTheme={currentTheme}
+        activeMediaTab={activeMediaTab}
+        mediaState={mediaState}
+        onToggleMediaPlay={handleToggleMediaPlay}
+      />
+
+      {/* 📑 MOBİL SEKME YÖNETİCİSİ (APPLE SAFARI 3D CARD GRID) */}
+      <MobileTabsSheet 
+        isOpen={isMobileTabsOpen}
+        onClose={() => setIsMobileTabsOpen(false)}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={(id) => setActiveTabId(id)}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        onNewIncognitoTab={handleNewIncognitoTab}
         isDark={isDark}
         currentTheme={currentTheme}
       />

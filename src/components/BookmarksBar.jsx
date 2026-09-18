@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Plus, X, Globe, Star, Sparkles } from 'lucide-react';
 import { sound } from '../services/soundService';
 
@@ -13,7 +13,7 @@ export default function BookmarksBar({
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
   return (
-    <div className={`w-full border-b select-none transition-colors z-20 shrink-0 ${
+    <div className={`hidden md:block w-full border-b select-none transition-colors z-20 shrink-0 ${
       isDark ? 'bg-[#0d1017]/80 border-white/5' : 'bg-[#edf0f7]/90 border-black/5'
     }`}>
       <div className="w-full px-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">

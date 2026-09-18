@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Plus, X, Globe, Star, ExternalLink, Sparkles } from 'lucide-react';
 import { sound } from '../services/soundService';
 
@@ -16,10 +16,10 @@ export default function SpeedDialGrid({
     <div className="w-full max-w-4xl mx-auto px-4 mb-10 animate-fadeIn select-none">
       
       {/* Bölüm Başlığı */}
-      <div className="flex items-center justify-between mb-3 px-1 text-xs opacity-60">
-        <div className="flex items-center gap-1.5 font-semibold">
+      <div className="flex items-center justify-between mb-3 px-1 text-xs opacity-75">
+        <div className="flex items-center gap-1.5 font-semibold text-xs text-slate-400 uppercase tracking-wider">
           <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-          <span>Sık Ziyaret Edilenler & Kısayollar</span>
+          <span>Favoriler</span>
         </div>
         <button
           onClick={onAddBookmarkClick}

@@ -543,7 +543,7 @@ async function fetchRealVisuals(query) {
   // 2. Yedek: Wikimedia Commons Açık Görsel API
   try {
     const cleanQ = encodeURIComponent(query.trim());
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanQ}&gsrnamespace=6&prop=imageinfo&iiprop=url|mime&format=json&origin=*&gsrlimit=12`;
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanQ}&gsrnamespace=6&prop=imageinfo&iiprop=url|mime|size|dimensions&iiurlwidth=800&format=json&origin=*&gsrlimit=18`;
     const res = await fetch(url);
     if (!res.ok) return getDefaultVisuals(query);
     const data = await res.json();
@@ -555,12 +555,22 @@ async function fetchRealVisuals(query) {
         return /\.(jpe?g|png|webp)($|\?)/i.test(u) && !u.includes('Signature') && !u.includes('logo') && !u.includes('Icon');
       })
       .map(p => {
+        const info = p.imageinfo?.[0] || {};
         const rawTitle = p.title.replace(/^File:/i, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+        const fullUrl = info.url || '';
+        const thumbUrl = info.thumburl || fullUrl;
         return {
           id: p.pageid,
           title: rawTitle,
-          thumb: p.imageinfo[0].url,
-          source: 'Wikimedia Commons'
+          url: fullUrl,
+          thumb: thumbUrl,
+          width: info.width || null,
+          height: info.height || null,
+          dimensions: info.width && info.height ? `${info.width} × ${info.height}` : 'HD Görsel',
+          size: info.size ? `${Math.round(info.size / 1024)} KB` : null,
+          descriptionUrl: info.descriptionurl || fullUrl,
+          source: 'Wikimedia Commons',
+          domain: 'commons.wikimedia.org'
         };
       });
 
@@ -575,50 +585,148 @@ function getDefaultVisuals(query) {
     {
       id: 1,
       title: `${query} - İnovasyon & Teknoloji`,
+      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1080,
+      dimensions: '1920 × 1080',
+      source: 'Unsplash'
     },
     {
       id: 2,
       title: `${query} - Dijital Ağlar ve Gelecek`,
+      url: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1280,
+      dimensions: '1920 × 1280',
+      source: 'Unsplash'
     },
     {
       id: 3,
       title: `${query} - Stratejik Araştırma`,
+      url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1080,
+      dimensions: '1920 × 1080',
+      source: 'Unsplash'
     }
   ];
 }
 
-// Haber Sonuçları
-function getNewsResults(query) {
+// Canlı Gerçek Google News TR Haberleri (Apple Safari Standardı)
+export async function fetchLiveGoogleNews(query) {
+  if (!query || !query.trim()) return [];
+  const cleanQ = query.trim();
+
+  // 1. Önce kendi Node/Express backend /api/news servisinden canlı çek
+  try {
+    const backendBase = API_BASE || 'http://localhost:3001';
+    const res = await fetch(`${backendBase}/api/news?q=${encodeURIComponent(cleanQ)}`, {
+      signal: AbortSignal.timeout(5000)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.news && Array.isArray(data.news) && data.news.length > 0) {
+        return data.news;
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        return data;
+      }
+    }
+  } catch (err) {
+    console.warn('[News] Yerel backend /api/news ulaşılamadı, RSS fallback deneniyor:', err.message);
+  }
+
+  // 2. Yedek Fallback: AllOrigins CORS proxy ile Google News TR RSS doğrudan çekimi
+  try {
+    const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(cleanQ)}&hl=tr&gl=TR&ceid=TR:tr`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`;
+    const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const xmlText = await res.text();
+      const parser = new DOMParser();
+      const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+      const items = Array.from(xmlDoc.querySelectorAll('item')).slice(0, 20);
+
+      return items.map((item, idx) => {
+        const fullTitle = item.querySelector('title')?.textContent || '';
+        const link = item.querySelector('link')?.textContent || '';
+        const pubDateStr = item.querySelector('pubDate')?.textContent || '';
+        const sourceElem = item.querySelector('source');
+        const sourceName = sourceElem?.textContent || '';
+        const sourceUrl = sourceElem?.getAttribute('url') || '';
+
+        let domain = '';
+        try {
+          if (sourceUrl) domain = new URL(sourceUrl).hostname.replace(/^www\./, '');
+          else if (link) domain = new URL(link).hostname.replace(/^www\./, '');
+        } catch (_) {}
+
+        const sLower = (sourceName || '').toLowerCase();
+        if (sLower.includes('hürriyet') || sLower.includes('hurriyet')) domain = 'hurriyet.com.tr';
+        else if (sLower.includes('sözcü') || sLower.includes('sozcu')) domain = 'sozcu.com.tr';
+        else if (sLower.includes('ntv')) domain = 'ntv.com.tr';
+        else if (sLower.includes('habertürk') || sLower.includes('haberturk')) domain = 'haberturk.com';
+        else if (sLower.includes('milliyet')) domain = 'milliyet.com.tr';
+        else if (sLower.includes('cumhuriyet')) domain = 'cumhuriyet.com.tr';
+        else if (sLower.includes('sabah')) domain = 'sabah.com.tr';
+        else if (sLower.includes('trt')) domain = 'trthaber.com';
+        else if (sLower.includes('anadolu ajans') || sLower.includes('aa.com')) domain = 'aa.com.tr';
+        else if (sLower.includes('webrazzi')) domain = 'webrazzi.com';
+        else if (sLower.includes('shiftdelete')) domain = 'shiftdelete.net';
+        else if (sLower.includes('donanım')) domain = 'donanimhaber.com';
+        else if (sLower.includes('webtekno')) domain = 'webtekno.com';
+        else if (sLower.includes('ensonhaber')) domain = 'ensonhaber.com';
+        else if (sLower.includes('mynet')) domain = 'mynet.com';
+
+        const title = fullTitle.replace(/\s*-\s*[^-]+$/, '').trim() || fullTitle;
+        const source = sourceName || (domain || 'Haber Merkezi');
+
+        let timeAgo = 'Az önce';
+        if (pubDateStr) {
+          const date = new Date(pubDateStr);
+          if (!isNaN(date.getTime())) {
+            const diffMin = Math.round((Date.now() - date.getTime()) / (1000 * 60));
+            if (diffMin < 60) timeAgo = `${Math.max(1, diffMin)} dakika önce`;
+            else if (diffMin < 1440) timeAgo = `${Math.round(diffMin / 60)} saat önce`;
+            else timeAgo = `${Math.round(diffMin / 1440)} gün önce`;
+          }
+        }
+
+        return {
+          id: `news_${idx}_${Date.now()}`,
+          title,
+          fullTitle,
+          url: link,
+          link,
+          source,
+          domain: domain || 'hurriyet.com.tr',
+          sourceDomain: domain || 'hurriyet.com.tr',
+          snippet: `${source} tarafından aktarılan son dakika gelişmesi: ${title}. Detaylar ve canlı gelişmeler takip ediliyor.`,
+          time: timeAgo,
+          timeAgo,
+          pubDate: pubDateStr
+        };
+      });
+    }
+  } catch (err) {
+    console.error('[News] RSS fallback hatası:', err);
+  }
+
+  // 3. Fallback
   return [
     {
       id: 1,
-      title: `Türkiye'de ${query} Alanında Kritik Atılım: Raporlar Açıklandı`,
-      source: 'Anadolu Ajansı / Teknoloji',
-      snippet: `${query} konusunda Türkiye ekosistemini güçlendiren yeni gelişmeler ve sektörel raporlar kamuoyuyla paylaşıldı.`,
-      time: '1 saat önce',
-      url: 'https://www.aa.com.tr'
-    },
-    {
-      id: 2,
-      title: `${query} ile İlgili Girişimler ve Yatırımlar Yükselişte`,
-      source: 'Webrazzi',
-      snippet: `Yerli teknoloji girişimleri ${query} alanında küresel ölçekte dikkat çeken projelere imza atıyor.`,
-      time: '4 saat önce',
-      url: 'https://webrazzi.com'
-    },
-    {
-      id: 3,
-      title: `Piyasalarda ${query} Etkisi ve Gelecek Beklentileri`,
-      source: 'Bloomberg HT',
-      snippet: `Ekonomistler ve sektör liderleri ${query} trendinin orta vadeli yansımalarını değerlendirdi.`,
-      time: 'Bugün',
-      url: 'https://www.bloomberght.com'
+      title: `${cleanQ} Gelişmeleri ve Güncel Türkiye Değerlendirmeleri`,
+      source: 'Anadolu Ajansı',
+      sourceDomain: 'aa.com.tr',
+      snippet: `${cleanQ} hakkında doğrulanmış haber kaynaklarından derlenen son dakika gelişmeleri.`,
+      timeAgo: '15 dakika önce',
+      time: '15 dakika önce',
+      url: `https://news.google.com/search?q=${encodeURIComponent(cleanQ)}&hl=tr&gl=TR&ceid=TR:tr`,
+      link: `https://news.google.com/search?q=${encodeURIComponent(cleanQ)}&hl=tr&gl=TR&ceid=TR:tr`
     }
   ];
 }
@@ -629,6 +737,8 @@ export async function executeSearch(query, isDeepSearch = false) {
   const startTime = performance.now();
   let aiSummary = '';
   let relatedQuestions = [];
+  // Canlı Google News aramasını arka planda paralel başlat (0ms gecikme)
+  const liveNewsPromise = fetchLiveGoogleNews(query);
   let isUsingLiveGoogle = false;
   let isUsingLiveGemini = false;
   let isUsingLiveBrave = !!config.braveApiKey;
@@ -794,7 +904,7 @@ export async function executeSearch(query, isDeepSearch = false) {
     comparison: insights.comparison,
     relatedQuestions,
     visuals,
-    news: getNewsResults(query),
+    news: await liveNewsPromise,
     knowledgeCard,
     agentData,
     hybridTelemetry,

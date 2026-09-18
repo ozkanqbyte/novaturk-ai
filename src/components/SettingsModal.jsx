@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Settings, Search, Bot, Palette, Shield, Database, 
-  Check, RotateCw, Volume2, Sparkles, Sliders, Moon, Sun, 
-  Cpu, Trash2, Key, Globe, Eye 
+  Settings, Shield, Sliders, Database, Palette, Bot, Volume2, 
+  Trash2, X, Globe, Save, CheckCircle2, Moon, Sun, Search, Sparkles, Check
 } from 'lucide-react';
 import { getApiConfig, saveApiConfig } from '../services/searchService';
 import { sound } from '../services/soundService';
+import { THEMES } from '../data/themes';
 
 export const getSavedSettings = () => {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -50,7 +50,15 @@ export const saveUserSettings = (settings) => {
   }
 };
 
-export default function SettingsModal({ isOpen, onClose, isDark, setIsDark, currentTheme }) {
+export default function SettingsModal({ 
+  isOpen, 
+  onClose, 
+  isDark, 
+  setIsDark, 
+  currentTheme,
+  onSelectTheme,
+  onOpenThemeSelector
+}) {
   const [activeTab, setActiveTab] = useState('search'); // 'search' | 'ai' | 'appearance' | 'privacy'
   const [settings, setSettings] = useState(getSavedSettings);
   const [statusMsg, setStatusMsg] = useState('');
@@ -373,6 +381,59 @@ export default function SettingsModal({ isOpen, onClose, isDark, setIsDark, curr
                 <div>
                   <h3 className="text-sm font-bold mb-1">Görsel Efektler & Apple VisionOS</h3>
                   <p className="text-xs opacity-60">Buzlu cam dokusu, ses efektleri ve karanlık mod tercihleri.</p>
+                </div>
+
+                {/* 🌟 20 SEÇKİN APPLE CAM & OLED TEMASI SEÇİCİSİ */}
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.03] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold block">Apple Cam & OLED Temaları</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 border border-sky-400/30">
+                          20 Tema (10 Yeni Eklendi)
+                        </span>
+                      </div>
+                      <span className="text-[11px] opacity-60">
+                        Aktif Tema: <strong className="text-white">{currentTheme?.name || 'Varsayılan'}</strong>
+                      </span>
+                    </div>
+
+                    {onOpenThemeSelector && (
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          onOpenThemeSelector();
+                        }}
+                        className="apple-pill-btn px-3 py-1.5 rounded-xl text-xs font-bold text-sky-400 border border-sky-400/40 hover:bg-sky-400/10 transition-all"
+                      >
+                        Tümünü Gör (20)
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Hızlı Seçim: Popüler ve Yeni Temalar */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                    {THEMES.slice(0, 8).concat(THEMES.filter(t => t.id === 'pure-black-oled')).slice(0, 8).map(theme => {
+                      const isSelected = currentTheme?.id === theme.id;
+                      return (
+                        <button
+                          key={theme.id}
+                          onClick={() => {
+                            sound.playClick();
+                            if (onSelectTheme) onSelectTheme(theme);
+                          }}
+                          className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all text-xs ${
+                            isSelected
+                              ? 'bg-sky-500/20 border-sky-400 text-white font-bold ring-1 ring-sky-400'
+                              : 'bg-white/[0.02] border-white/10 opacity-70 hover:opacity-100 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded-full bg-gradient-to-tr ${theme.previewGradient} shrink-0 border border-white/20`} />
+                          <span className="truncate text-[11px]">{theme.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Karanlık Mod Geçişi */}

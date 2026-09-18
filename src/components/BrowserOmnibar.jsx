@@ -136,7 +136,7 @@ export default function BrowserOmnibar({
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
   return (
-    <div className={`w-full px-3 py-1.5 flex items-center justify-between gap-2.5 border-b shrink-0 z-20 transition-all select-none ${
+    <div className={`hidden md:flex w-full px-3 py-1.5 items-center justify-between gap-2.5 border-b shrink-0 z-20 transition-all select-none ${
       isDark 
         ? 'bg-[#12151e] border-white/10 text-slate-100 shadow-[0_4px_20px_rgba(0,0,0,0.4)]' 
         : 'bg-[#f4f6fa] border-black/10 text-slate-800 shadow-sm'

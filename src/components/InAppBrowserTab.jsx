@@ -37,6 +37,8 @@ const isKnownBlockedDomain = (url) => {
   }
 };
 
+const IPHONE_SAFARI_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+
 export default function InAppBrowserTab({ 
   tab, 
   onClose, 
@@ -49,6 +51,103 @@ export default function InAppBrowserTab({
   reloadKey = 1,
   onContextMenu
 }) {
+  const innerRef = useRef(null);
+  const internalNavUrlRef = useRef('');
+
+  // 📱 Otomatik Mobil Modu Algılama (Mobilde siteler kendiliğinden mobil arayüzünü açar)
+  const [isMobileScreen, setIsMobileScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (iframeRef && innerRef.current) {
+      iframeRef.current = innerRef.current;
+    }
+  });
+
+  // 🌟 Canlı Medya Köprüsü: YouTube Durumunu Dinle ve Ada ile Eşitle
+  useEffect(() => {
+    if (!tab.url?.includes('youtube') && !tab.url?.includes('youtu.be') && !tab.title?.toLowerCase().includes('youtube')) return;
+
+    const interval = setInterval(async () => {
+      if (innerRef.current && typeof innerRef.current.executeJavaScript === 'function') {
+        try {
+          const media = await innerRef.current.executeJavaScript(`
+            window.__novaturk_getMedia ? window.__novaturk_getMedia() : (() => {
+              const v = document.querySelector('video');
+              const t = document.querySelector('h1.ytd-watch-metadata yt-formatted-string, h1.title, #title h1');
+              const c = document.querySelector('#channel-name yt-formatted-string a, #owner-name a');
+              let vId = '';
+              try { vId = new URLSearchParams(window.location.search).get('v') || ''; } catch {}
+              return {
+                title: t ? t.textContent.trim() : document.title.replace(' - YouTube', '').trim(),
+                artist: c ? c.textContent.trim() : 'YouTube Sanatçısı',
+                currentTime: v ? Math.floor(v.currentTime) : 0,
+                duration: v ? Math.floor(v.duration || 0) : 0,
+                paused: v ? v.paused : true,
+                videoId: vId,
+                thumbnail: vId ? ('https://i.ytimg.com/vi/' + vId + '/hqdefault.jpg') : ''
+              };
+            })()
+          `);
+
+          if (media && (media.duration > 0 || media.title)) {
+            window.dispatchEvent(new CustomEvent('novaturk:media-status-update', {
+              detail: {
+                tabId: tab.id,
+                ...media
+              }
+            }));
+          }
+        } catch {}
+      }
+    }, 750);
+
+    return () => clearInterval(interval);
+  }, [tab.id, tab.url]);
+
+  // 🌟 Dinamik Ada'dan Gelen Oynat/Durdur/Sar/Sonraki Komutlarını İlet
+  useEffect(() => {
+    const handleMediaCmd = async (e) => {
+      if (e.detail?.tabId === tab.id && innerRef.current) {
+        const { action, val } = e.detail;
+        try {
+          if (typeof innerRef.current.executeJavaScript === 'function') {
+            await innerRef.current.executeJavaScript(`
+              if (window.__novaturk_mediaControl) {
+                window.__novaturk_mediaControl('${action}', ${JSON.stringify(val)});
+              } else {
+                const v = document.querySelector('video');
+                if (v) {
+                  if ('${action}' === 'toggle') v.paused ? v.play() : v.pause();
+                  else if ('${action}' === 'play') v.play();
+                  else if ('${action}' === 'pause') v.pause();
+                  else if ('${action}' === 'seek') v.currentTime = Number(${JSON.stringify(val)});
+                  else if ('${action}' === 'seekDelta') v.currentTime += Number(${JSON.stringify(val)});
+                  else if ('${action}' === 'next') {
+                    const b = document.querySelector('.ytp-next-button');
+                    if (b) b.click();
+                  } else if ('${action}' === 'prev') {
+                    if (v.currentTime > 3) v.currentTime = 0; else window.history.back();
+                  }
+                }
+              }
+            `);
+          }
+        } catch {}
+      }
+    };
+
+    window.addEventListener('novaturk:media-command', handleMediaCmd);
+    return () => window.removeEventListener('novaturk:media-command', handleMediaCmd);
+  }, [tab.id]);
+
   const isElectron = isElectronApp();
   const currentUrl = tab.url || 'https://google.com';
 
@@ -97,14 +196,22 @@ export default function InAppBrowserTab({
     }
   }, [currentUrl]);
 
-  // Sekme URL'si değiştiğinde webview'i zorunlu yönlendir
+  // Sekme URL'si dışarıdan (Omnibar / Kısayol) değiştiğinde webview'i yönlendir
   useEffect(() => {
     const wv = iframeRef?.current;
     if (wv && isElectron && typeof wv.getURL === 'function' && typeof wv.loadURL === 'function') {
       try {
+        // Eğer bu URL değişikliği webview'in kendi iç gezinmesinden (ör. YouTube sonraki şarkı) geldiyse tekrar yükleme yapma!
+        if (internalNavUrlRef.current === tab.url) {
+          return;
+        }
         const wvUrl = wv.getURL();
-        if (wvUrl && tab.url && wvUrl !== tab.url) {
-          wv.loadURL(tab.url);
+        if (wvUrl && tab.url) {
+          const cleanWv = wvUrl.replace(/\/$/, '');
+          const cleanTab = tab.url.replace(/\/$/, '');
+          if (cleanWv !== cleanTab) {
+            wv.loadURL(tab.url);
+          }
         }
       } catch (err) {}
     }
@@ -263,10 +370,13 @@ export default function InAppBrowserTab({
     };
 
     const handleNavigate = (e) => {
-      if (e.url && onUpdateTab && e.url !== currentUrl) {
-        let host = e.url;
-        try { host = new URL(e.url).hostname; } catch {}
-        onUpdateTab(tab.id, { url: e.url, title: host });
+      if (e.url && onUpdateTab) {
+        internalNavUrlRef.current = e.url;
+        if (e.url !== currentUrl) {
+          let host = e.url;
+          try { host = new URL(e.url).hostname; } catch {}
+          onUpdateTab(tab.id, { url: e.url, title: host });
+        }
       }
     };
 
@@ -439,11 +549,13 @@ export default function InAppBrowserTab({
 
             {isElectron ? (
               <webview
-                ref={iframeRef}
-                key={reloadKey}
+                ref={innerRef}
+                key={`${reloadKey}_${isMobileScreen ? 'mob' : 'desk'}`}
                 src={currentUrl}
+                useragent={isMobileScreen ? IPHONE_SAFARI_USER_AGENT : undefined}
                 partition={tab.isIncognito ? "nopersist_incognito" : "persist:novaturk_browsing"}
                 allowpopups="true"
+                webpreferences="backgroundThrottling=no"
                 preload={window.electron?.webviewPreloadPath}
                 className="w-full h-full border-0 absolute inset-0"
                 style={{ width: '100%', height: '100%' }}
@@ -451,7 +563,7 @@ export default function InAppBrowserTab({
             ) : (
               <>
                 {/* 🛡️ NovaTürk Canlı Proxy Kalkanı Rozeti */}
-                <div className="absolute top-2.5 right-4 z-30 pointer-events-auto flex items-center gap-2">
+                <div className="hidden md:flex absolute top-2.5 right-4 z-30 pointer-events-auto items-center gap-2">
                   <div className="px-2.5 py-1 rounded-full bg-slate-900/85 border border-white/20 text-slate-200 text-[11px] font-medium backdrop-blur-md shadow-lg flex items-center gap-1.5">
                     <ShieldCheck className="w-3 h-3 text-emerald-400" />
                     <span>Canlı Proxy Kalkanı Aktif</span>
@@ -468,7 +580,7 @@ export default function InAppBrowserTab({
                 </div>
 
                 <iframe
-                  ref={iframeRef}
+                  ref={innerRef}
                   key={reloadKey}
                   src={
                     (targetProxyUrl && targetProxyUrl.startsWith('http'))

@@ -47,8 +47,8 @@ app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('disable-gpu-process-crash-limit');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 function startBackendServer() {
   const serverPath = path.join(__dirname, '../server/index.js');
@@ -118,6 +118,7 @@ function createWindow() {
       contextIsolation: false,
       webSecurity: false,
       webviewTag: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.cjs')
     }
   });
@@ -314,6 +315,22 @@ app.whenReady().then(() => {
     if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
       console.log('[NovaTurk External] Sistem tarayıcısında açılıyor:', url);
       shell.openExternal(url);
+    }
+  });
+
+  // 🔍 Google Chrome Geliştirici Araçları & İncele (DevTools / Inspect)
+  ipcMain.on('open-dev-tools', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
+
+  ipcMain.on('inspect-element', (event, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (data && typeof data.x === 'number' && typeof data.y === 'number') {
+        mainWindow.webContents.inspectElement(data.x, data.y);
+      }
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
   });
 

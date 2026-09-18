@@ -201,3 +201,47 @@
 .light ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.3);
 }
+
+/* 🌟 Apple Dynamic Island Sound & Vinyl Keyframes */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes equalizerWave1 {
+  0%, 100% { height: 5px; }
+  50% { height: 16px; }
+}
+
+@keyframes equalizerWave2 {
+  0%, 100% { height: 16px; }
+  50% { height: 7px; }
+}
+
+@keyframes equalizerWave3 {
+  0%, 100% { height: 9px; }
+  50% { height: 18px; }
+}
+
+@keyframes equalizerWave4 {
+  0%, 100% { height: 14px; }
+  50% { height: 6px; }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 7s linear infinite;
+}
+
+.animate-eq-1 {
+  animation: equalizerWave1 0.8s ease-in-out infinite;
+}
+.animate-eq-2 {
+  animation: equalizerWave2 0.65s ease-in-out infinite 0.1s;
+}
+.animate-eq-3 {
+  animation: equalizerWave3 0.9s ease-in-out infinite 0.2s;
+}
+.animate-eq-4 {
+  animation: equalizerWave4 0.75s ease-in-out infinite 0.15s;
+}
+

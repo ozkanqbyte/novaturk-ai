@@ -20,8 +20,8 @@ export default function RecentVisitsSection({ history = [], onSelectVisit, onRem
   return (
     <div className="w-full max-w-2xl mx-auto my-6 animate-fadeIn">
       <div className="flex items-center justify-between mb-2.5 px-1 text-xs opacity-60">
-        <span className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
-          <Clock className="w-3.5 h-3.5 text-sky-400" /> Son Ziyaret Edilenler
+        <span className="flex items-center gap-1.5 font-semibold uppercase tracking-wider text-xs text-slate-400">
+          <Clock className="w-3.5 h-3.5 text-sky-400" /> Sık Ziyaret Edilenler
         </span>
         <span className="text-[10px] font-mono opacity-60">Hızlı Geri Dönüş</span>
       </div>

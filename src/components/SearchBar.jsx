@@ -3,7 +3,17 @@ import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Imag
 import { sound } from '../services/soundService';
 import { API_BASE } from '../services/searchService';
 
-export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme }) {
+export default function SearchBar({ 
+  onSearch, 
+  isCompact = false, 
+  isMini = false,
+  defaultQuery = '', 
+  isDeepSearch, 
+  setIsDeepSearch, 
+  isDark, 
+  currentTheme, 
+  autoFocus = false 
+}) {
   const [query, setQuery] = useState(defaultQuery);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -77,6 +87,14 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
       setActiveSuggestion(-1);
     }
   };
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K or '/'
   useEffect(() => {
@@ -203,7 +221,9 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
   };
 
   return (
-    <div className={`w-full transition-all duration-300 ${isCompact ? 'max-w-4xl' : 'max-w-2xl mx-auto'}`}>
+    <div className={`w-full transition-all duration-300 ${
+      isMini ? 'max-w-xl' : isCompact ? 'max-w-2xl' : 'max-w-2xl mx-auto'
+    }`}>
       <form onSubmit={handleSubmit} className="relative w-full">
         {/* Apple Dynamic Search Capsule */}
         <div 
@@ -213,15 +233,19 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
               ? `0 0 25px ${themeAccent}30, 0 20px 50px rgba(0,0,0,${isDark ? '0.6' : '0.1'})` 
               : undefined
           }}
-          className="apple-search-capsule rounded-full p-2 flex items-center gap-2.5 transition-all duration-300"
+          className={`apple-search-capsule rounded-full flex items-center transition-all duration-300 ${
+            isMini 
+              ? 'p-1 sm:p-1.5 gap-1.5 shadow-md' 
+              : 'p-2 gap-2.5 shadow-lg'
+          }`}
         >
           
           {/* Search Icon */}
           <div 
             style={{ color: isFocused ? themeAccent : undefined }}
-            className="pl-2.5 flex items-center justify-center opacity-70 transition-colors"
+            className={`${isMini ? 'pl-2' : 'pl-2.5'} flex items-center justify-center opacity-70 transition-colors`}
           >
-            <Search className="w-5 h-5" />
+            <Search className={isMini ? "w-4 h-4" : "w-5 h-5"} />
           </div>
 
           {/* Input */}
@@ -237,15 +261,19 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             placeholder={
               isListening 
                 ? 'Sizi dinliyorum, konuşun...' 
-                : 'NovaTürk ile her şeyi sorun veya webde arayın...'
+                : isMini 
+                  ? 'NovaTürk Arama...' 
+                  : 'NovaTürk ile her şeyi sorun veya webde arayın...'
             }
-            className={`w-full bg-transparent text-sm sm:text-base font-normal focus:outline-none placeholder:opacity-50 ${
+            className={`w-full bg-transparent font-normal focus:outline-none placeholder:opacity-50 transition-all ${
+              isMini ? 'text-xs sm:text-sm py-0.5' : 'text-sm sm:text-base'
+            } ${
               isDark ? 'text-white' : 'text-slate-900'
             }`}
           />
 
           {/* Apple ⌘K Shortcut Pill */}
-          {!query && !isFocused && (
+          {!query && !isFocused && !isMini && (
             <div className={`hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono select-none border opacity-60 ${
               isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
             }`}>
@@ -259,9 +287,9 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             <button
               type="button"
               onClick={handleClear}
-              className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity"
+              className={`${isMini ? 'p-1' : 'p-1.5'} rounded-full hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity`}
             >
-              <X className="w-4 h-4" />
+              <X className={isMini ? "w-3.5 h-3.5" : "w-4 h-4"} />
             </button>
           )}
 
@@ -273,9 +301,9 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
               fileInputRef.current?.click();
             }}
             title="NovaLens: Görsel ile Ara veya Yapıştır (Ctrl+V)"
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 opacity-70 hover:opacity-100 transition-all hover:text-sky-400"
+            className={`${isMini ? 'p-1.5' : 'p-2'} rounded-full hover:bg-black/5 dark:hover:bg-white/10 opacity-70 hover:opacity-100 transition-all hover:text-sky-400`}
           >
-            <Camera className="w-4 h-4" />
+            <Camera className={isMini ? "w-3.5 h-3.5" : "w-4 h-4"} />
           </button>
           <input 
             type="file" 
@@ -291,43 +319,45 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
               type="button"
               onClick={toggleVoiceSearch}
               title={isListening ? 'Kaydı Durdur' : 'Türkçe Sesli Arama'}
-              className={`p-2 rounded-full transition-all ${
+              className={`${isMini ? 'p-1.5' : 'p-2'} rounded-full transition-all ${
                 isListening
                   ? 'bg-rose-500 text-white animate-pulse'
                   : 'hover:bg-black/5 dark:hover:bg-white/10 opacity-70 hover:opacity-100'
               }`}
             >
-              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isListening ? <MicOff className={isMini ? "w-3.5 h-3.5" : "w-4 h-4"} /> : <Mic className={isMini ? "w-3.5 h-3.5" : "w-4 h-4"} />}
             </button>
           )}
 
           {/* Deep Search Toggle */}
-          <button
-            type="button"
-            onClick={handleDeepToggle}
-            title="Derin Düşünce Modu"
-            style={isDeepSearch ? {
-              backgroundColor: themeAccent,
-              borderColor: themeAccent,
-              color: '#ffffff'
-            } : {}}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-              isDeepSearch
-                ? 'font-semibold shadow-sm'
-                : isDark ? 'border-white/10 opacity-70 hover:opacity-100' : 'border-black/10 opacity-70 hover:opacity-100'
-            }`}
-          >
-            <Brain className={`w-3.5 h-3.5 ${isDeepSearch ? 'animate-pulse' : ''}`} />
-            <span>Derin</span>
-          </button>
+          {!isMini && (
+            <button
+              type="button"
+              onClick={handleDeepToggle}
+              title="Derin Düşünce Modu"
+              style={isDeepSearch ? {
+                backgroundColor: themeAccent,
+                borderColor: themeAccent,
+                color: '#ffffff'
+              } : {}}
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                isDeepSearch
+                  ? 'font-semibold shadow-sm'
+                  : isDark ? 'border-white/10 opacity-70 hover:opacity-100' : 'border-black/10 opacity-70 hover:opacity-100'
+              }`}
+            >
+              <Brain className={`w-3.5 h-3.5 ${isDeepSearch ? 'animate-pulse' : ''}`} />
+              <span>Derin</span>
+            </button>
+          )}
 
           {/* Submit Action Button */}
           <button
             type="submit"
             style={{ backgroundColor: themeAccent }}
-            className="p-2.5 rounded-full text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
+            className={`${isMini ? 'p-1.5 sm:p-2' : 'p-2.5'} rounded-full text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0`}
           >
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className={isMini ? "w-3.5 h-3.5" : "w-4 h-4"} />
           </button>
 
         </div>
