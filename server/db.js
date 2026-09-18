@@ -92,7 +92,7 @@ class MemoryDbAdapter {
 
 let dbInstance;
 if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
-  console.log(`[NovaTurk DB] 🌐 Turso Cloud DB ortamı algılandı: ${process.env.TURSO_DATABASE_URL}`);
+  console.warn('[NovaTurk DB] ⚠️ TURSO_DATABASE_URL / TURSO_AUTH_TOKEN bulundu ama Turso bağlantısı henüz uygulanmadı. Şu an yerel SQLite dosyası kullanılıyor ve bu dosya Render free plan gibi kalıcı diski olmayan ortamlarda her yeniden başlatmada sıfırlanır.');
 }
 
 try {
@@ -203,20 +203,85 @@ function seedInitialSites() {
   }
 }
 
-// Arama Sorgusu
+// Türkçe Ek Temizleme (basit kural-tabanlı, gerçek bir NLP kütüphanesi değil)
+// Amaç: "haberler" araması "haber" içeren sayfaları da bulabilsin, "ekonomiye" → "ekonomi" eşleşsin vb.
+const TURKISH_SUFFIXES = [
+  'lerinden', 'larından', 'lerine', 'larına', 'lerini', 'larını',
+  'lerdeki', 'lardaki', 'lerde', 'larda', 'lerden', 'lardan', 'lerin', 'ların', 'leri', 'ları', 'ler', 'lar',
+  'ndaki', 'ndeki', 'ndan', 'nden', 'nda', 'nde', 'nin', 'nın', 'nun', 'nün',
+  'deki', 'daki', 'teki', 'taki',
+  'den', 'dan', 'ten', 'tan', 'de', 'da', 'te', 'ta',
+  'yle', 'yla', 'yi', 'yı', 'yu', 'yü',
+  'e', 'a', 'i', 'ı', 'u', 'ü'
+];
+
+function stemTurkish(word) {
+  let w = word;
+  for (let pass = 0; pass < 2; pass++) {
+    const suffix = TURKISH_SUFFIXES.find(s => w.length - s.length >= 3 && w.endsWith(s));
+    if (!suffix) break;
+    w = w.slice(0, -suffix.length);
+  }
+  return w;
+}
+
+// Arama Sorgusu (Türkçe Ek-Duyarlı TF Benzeri Alaka Skorlaması ile Sıralanmış)
 export function searchLocalDb(query) {
   const cleanQ = query.trim().toLowerCase();
-  const searchPattern = `%${cleanQ}%`;
+  if (!cleanQ) return [];
+
+  const rawTerms = cleanQ.split(/\s+/).filter(Boolean);
+  const stemmedTerms = [...new Set(rawTerms.map(stemTurkish))];
+
+  // Aday satırları çekerken hem tam ifadeyi hem de kök-terimleri ara (ek farkını tolere et)
+  const likeTargets = [`%${cleanQ}%`, ...stemmedTerms.map(t => `%${t}%`)];
+  const conditions = likeTargets.map(() => '(LOWER(p.title) LIKE ? OR LOWER(p.snippet) LIKE ? OR LOWER(p.content) LIKE ?)').join(' OR ');
+  const params = likeTargets.flatMap(t => [t, t, t]);
 
   const stmt = db.prepare(`
-    SELECT p.id, p.title, p.url, p.snippet, s.name as sourceName, s.domain as displayLink, s.category
+    SELECT p.id, p.title, p.url, p.snippet, p.content, s.name as sourceName, s.domain as displayLink, s.category, s.authority_score
     FROM pages p
     LEFT JOIN sites s ON p.site_id = s.id
-    WHERE LOWER(p.title) LIKE ? OR LOWER(p.snippet) LIKE ? OR LOWER(p.content) LIKE ?
-    LIMIT 20
+    WHERE ${conditions}
+    LIMIT 300
   `);
 
-  return stmt.all(searchPattern, searchPattern, searchPattern);
+  const candidates = stmt.all(...params);
+
+  function relevanceScore(row) {
+    const title = (row.title || '').toLowerCase();
+    const snippet = (row.snippet || '').toLowerCase();
+    const content = (row.content || '').toLowerCase();
+    let score = 0;
+
+    if (title.includes(cleanQ)) score += 50; // tam ifade başlıkta geçiyor
+
+    for (const term of rawTerms) {
+      if (title.includes(term)) score += 12;
+      if (snippet.includes(term)) score += 5;
+      if (content) {
+        const occurrences = content.split(term).length - 1;
+        score += Math.min(occurrences, 5) * 2; // terim frekansı (üst sınırlı)
+      }
+    }
+
+    // Kök-terim eşleşmeleri (ör. "haberler" → "haber") daha düşük ağırlıkla puanlanır
+    for (const stem of stemmedTerms) {
+      if (!stem || rawTerms.includes(stem)) continue;
+      if (title.includes(stem)) score += 6;
+      if (snippet.includes(stem)) score += 3;
+    }
+
+    score += (row.authority_score || 50) / 10; // kaynak otorite bonusu
+    return score;
+  }
+
+  return candidates
+    .map(row => ({ ...row, relevanceScore: relevanceScore(row) }))
+    .filter(row => row.relevanceScore > 0)
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, 20)
+    .map(({ content, ...rest }) => rest); // ham içeriği dışarı sızdırma
 }
 
 // ⚡ L1 Ultra Hızlı Bellek İçi Önbellek (0.001s / 1ms Gecikme)

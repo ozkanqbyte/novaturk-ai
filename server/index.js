@@ -4,7 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats } from './db.js';
-import { crawlSite, runBatchCrawler, crawlerState } from './crawler.js';
+import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId } from './crawler.js';
+import { ingestAllNewsFeeds } from './rssFeeds.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,24 @@ app.use(express.json());
 
 // Veritabanını başlat
 initDatabase();
+
+// 🔄 Otomatik Haber Taraması: Kendi indeksimiz kimse tetiklemeden, kendi kendine büyüsün
+// (DuckDuckGo'ya bağımlılığı azaltmanın asıl yolu budur — cache sadece TEKRARLANAN sorularda işe yarar,
+// bu ise hiç sorulmamış yeni sorular için de kendi cevabımızın olma ihtimalini artırır)
+const RSS_AUTO_INGEST_MS = 6 * 60 * 60 * 1000; // 6 saatte bir
+
+async function runAutoRssIngest(label) {
+  try {
+    const results = await ingestAllNewsFeeds();
+    const total = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
+    console.log(`[NovaTurk Otomatik RSS] ${label}: ${total} makale indekslendi.`);
+  } catch (err) {
+    console.warn(`[NovaTurk Otomatik RSS] ${label} hata:`, err.message);
+  }
+}
+
+runAutoRssIngest('Başlangıç taraması');
+setInterval(() => runAutoRssIngest('Periyodik tarama'), RSS_AUTO_INGEST_MS);
 
 // Kalite ve Güven Puanlama Fonksiyonu
 function calculateQualityScore(item, query) {
@@ -513,23 +532,8 @@ app.post('/api/crawl', async (req, res) => {
 });
 
 // 5. Canlı Küresel Web Arama (Akıllı SQLite Önbellek + DuckDuckGo Live HTML - 0 TL)
-app.get('/api/live-web-search', async (req, res) => {
-  const query = req.query.q || '';
-  if (!query.trim()) return res.json({ success: true, results: [] });
-
-  // 1. ADIM: SQLite Akıllı Önbellek Kontrolü (Tier 1 - 1ms, 0 TL)
-  const cachedResults = getCachedQuery(query);
-  if (cachedResults && cachedResults.length > 0) {
-    return res.json({
-      success: true,
-      count: cachedResults.length,
-      cached: true,
-      latency: '1ms',
-      source: 'NovaTurk SQLite Yerel Önbellek (Işık Hızı - 0 TL)',
-      results: cachedResults
-    });
-  }
-
+// DuckDuckGo Canlı HTML Arama (yalnızca bir kaynak - kendi indeksimiz DEĞİL)
+async function fetchDdgResults(query) {
   try {
     const url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query);
     const ddgRes = await fetch(url, {
@@ -541,7 +545,7 @@ app.get('/api/live-web-search', async (req, res) => {
       }
     });
 
-    if (!ddgRes.ok) return res.json({ success: false, results: [] });
+    if (!ddgRes.ok) return [];
     const html = await ddgRes.text();
     const results = [];
     const seenUrls = new Set();
@@ -591,19 +595,112 @@ app.get('/api/live-web-search', async (req, res) => {
       });
     }
 
-    // Kalite puanına göre sırala
-    results.sort((a, b) => b.qualityScore - a.qualityScore);
-
-    const finalResults = results.slice(0, 10);
-
-    // 2. ADIM: "Write-on-Read" (Okurken Kaydet) - Otomatik Olarak SQLite'a Ekle
-    if (finalResults.length > 0) {
-      saveCachedQuery(query, finalResults);
-    }
-
-    res.json({ success: true, count: finalResults.length, cached: false, results: finalResults });
+    return results;
   } catch (err) {
-    res.json({ success: false, results: [] });
+    console.warn('[DDG Fetch Error]:', err.message);
+    return [];
+  }
+}
+
+// Kullanıcı araması sırasında DuckDuckGo'da bulunan linkleri KALICI olarak kendi indeksimize (pages tablosu) ekler.
+// Böylece bir kullanıcının aramasıyla keşfedilen sayfa, farklı ama ilgili bir sorguda da bizim kendi
+// veritabanımızdan bulunabilir hale gelir (sadece aynı sorunun tekrarında değil).
+function indexDdgResultsIntoOwnDb(ddgResults) {
+  for (const item of ddgResults) {
+    try {
+      const hostname = item.displayLink || new URL(item.link).hostname;
+      const siteId = getOrCreateSiteId(hostname);
+      db.prepare(`
+        INSERT OR IGNORE INTO pages (site_id, title, url, snippet, content, indexed_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `).run(siteId, item.title, item.link, item.snippet, item.snippet);
+    } catch {
+      // Tek bir kayıt hatası tüm aramayı bozmasın
+    }
+  }
+}
+
+// Gerçek Hibrit Arama: Kendi İndeksimiz (SQLite) + Canlı DuckDuckGo, PARALEL çalışıp birleştirilir
+app.get('/api/live-web-search', async (req, res) => {
+  const query = req.query.q || '';
+  if (!query.trim()) return res.json({ success: true, results: [] });
+
+  // 1. ADIM: SQLite Akıllı Önbellek Kontrolü (Tier 1 - 1ms, 0 TL)
+  const cachedResults = getCachedQuery(query);
+  if (cachedResults && cachedResults.length > 0) {
+    return res.json({
+      success: true,
+      count: cachedResults.length,
+      cached: true,
+      latency: '1ms',
+      source: 'NovaTurk SQLite Yerel Önbellek (Işık Hızı - 0 TL)',
+      results: cachedResults
+    });
+  }
+
+  // 2. ADIM: Kendi indeksimiz ve canlı DuckDuckGo aramasını PARALEL çalıştır
+  const [ownIndexSettled, ddgSettled] = await Promise.allSettled([
+    Promise.resolve(searchLocalDb(query)),
+    fetchDdgResults(query)
+  ]);
+
+  const ownIndexRows = ownIndexSettled.status === 'fulfilled' ? ownIndexSettled.value : [];
+  const ddgResults = ddgSettled.status === 'fulfilled' ? ddgSettled.value : [];
+
+  // Canlı bulunan DDG linklerini kalıcı index'e ekle (kalıcı öğrenme — bir daha bu URL için DDG'ye gitmeye gerek kalmaz)
+  if (ddgResults.length > 0) {
+    indexDdgResultsIntoOwnDb(ddgResults);
+  }
+
+  const ownIndexResults = ownIndexRows.map(row => ({
+    title: row.title,
+    snippet: row.snippet || `${row.title} - NovaTurk kendi dizininden.`,
+    link: row.url,
+    displayLink: row.displayLink || 'novaturk-index',
+    sourceName: row.sourceName ? `${row.sourceName} (NovaTurk İndeksi)` : 'NovaTurk Kendi İndeksi',
+    qualityScore: calculateQualityScore({ url: row.url, title: row.title }, query) + Math.min(row.relevanceScore || 0, 40),
+    badge: '🇹🇷 NovaTurk Kendi İndeksi',
+    cleanBadge: '⚡ Kendi Dizin (0 TL)',
+    timestamp: 'Kendi İndeks'
+  }));
+
+  // 3. ADIM: Birleştir, aynı URL'leri tekilleştir, kaliteye göre sırala
+  const merged = [...ownIndexResults, ...ddgResults].sort((a, b) => b.qualityScore - a.qualityScore);
+  const seen = new Set();
+  const deduped = [];
+  for (const item of merged) {
+    const key = (item.link || '').replace(/\/+$/, '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  const finalResults = deduped.slice(0, 12);
+
+  // 4. ADIM: "Write-on-Read" (Okurken Kaydet) - Otomatik Olarak SQLite'a Ekle
+  if (finalResults.length > 0) {
+    saveCachedQuery(query, finalResults);
+  }
+
+  res.json({
+    success: true,
+    count: finalResults.length,
+    cached: false,
+    source: 'NovaTurk Hibrit Arama (Kendi İndeks + Canlı Web)',
+    ownIndexCount: ownIndexResults.length,
+    liveWebCount: ddgResults.length,
+    results: finalResults
+  });
+});
+
+// Haber RSS Toplama Tetikleyicisi (0 TL, yasal syndication - kendi indeksi büyütür)
+app.post('/api/crawl/rss-news', async (req, res) => {
+  try {
+    const results = await ingestAllNewsFeeds();
+    const totalInserted = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
+    res.json({ success: true, totalInserted, feeds: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -656,6 +753,20 @@ app.get('/api/live-images', async (req, res) => {
   } catch (err) {
     res.json({ success: false, results: [] });
   }
+});
+
+// 2.55 Gerçek Çıkış IP Testi — bu uç nokta önceden HİÇ YOKTU, bu yüzden "Canlı Test Et" butonu
+// her zaman sahte/sabit bir IP gösteriyordu. Şimdi isteğin sunucuya gerçekten hangi IP'den
+// ulaştığını döndürüyor. NOT: Bu, VPN'in gerçekten IP'yi gizlediği anlamına GELMEZ — sadece
+// artık buton kullanıcıya doğru (gerçek) bilgi veriyor, sahte bilgi değil.
+app.get('/api/vpn/my-ip', (req, res) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = (forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress) || 'bilinmiyor';
+  res.json({
+    success: true,
+    ip,
+    note: "Bu, isteğin sunucuya ulaştığı gerçek IP adresidir. Bu uygulama gerçek bir VPN tüneli kurmuyor; bu IP her zaman gerçek IP'nizi gösterir."
+  });
 });
 
 // 2.6 Gerçek CyberVPN Canlı Node Havuzu & IP Doğrulayıcı
@@ -738,6 +849,7 @@ app.get('/api/vpn/nodes', (req, res) => {
 // ============================================================================
 let activeGoogleAuth = {
   authenticated: false,
+  isDemo: false,
   user: null,
   timestamp: 0
 };
@@ -746,36 +858,56 @@ app.get('/api/auth/google/status', (req, res) => {
   res.json(activeGoogleAuth);
 });
 
+// NOT: Bu uç nokta yalnızca DEMO girişi içindir (gerçek Google OAuth /auth/google/callback'te,
+// aşağıda, GET olarak yapılır). Burada istemcinin gönderdiği isim/e-posta asla gerçek bir Google
+// hesabı doğrulaması değildir — önceden burada geliştiricinin kendi e-postası hardcode edilmişti,
+// bu yanıltıcıydı ve kaldırıldı.
 app.post('/api/auth/google/callback', (req, res) => {
-  const { name, email, avatar } = req.body || {};
   activeGoogleAuth = {
     authenticated: true,
+    isDemo: true,
     user: {
-      name: name || 'Google Kullanıcısı',
-      email: email || 'kullanici@gmail.com',
-      avatar: avatar || 'https://lh3.googleusercontent.com/a/default-user=s96-c',
+      name: 'Misafir Kullanıcı',
+      email: null,
+      avatar: null,
       connectedAt: new Date().toISOString()
     },
     timestamp: Date.now()
   };
-  console.log(`[Google Auth Bridge] Oturum başarıyla doğrulandı: ${activeGoogleAuth.user.name} (${activeGoogleAuth.user.email})`);
-  res.json({ success: true, user: activeGoogleAuth.user });
+  console.log('[Google Auth Bridge] Demo oturumu başlatıldı (gerçek Google hesabı DEĞİL).');
+  res.json({ success: true, user: activeGoogleAuth.user, isDemo: true });
 });
 
 app.post('/api/auth/google/reset', (req, res) => {
-  activeGoogleAuth = { authenticated: false, user: null, timestamp: 0 };
+  activeGoogleAuth = { authenticated: false, isDemo: false, user: null, timestamp: 0 };
   res.json({ success: true });
 });
 
 // Resmî Sistem Tarayıcısı (Chrome) Onay Ekranı
 app.get('/auth/google/start', (req, res) => {
   const target = req.query.target || 'youtube';
+  const hasRealOAuth = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+
+  if (hasRealOAuth) {
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/auth/google/callback`;
+    const params = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      state: target,
+      access_type: 'online',
+      prompt: 'select_account'
+    });
+    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  }
+
   res.send(`<!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NovaTürk AI • Google Güvenli Doğrulama Köprüsü</title>
+  <title>NovaTürk AI • Demo Giriş (Gerçek Google Hesabı Değildir)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -990,18 +1122,13 @@ app.get('/auth/google/start', (req, res) => {
   <div class="ambient-glow"></div>
   <div class="card">
     <div id="authContent">
-      <div class="badge">
-        <span>⚡ Resmî Doğrulama Köprüsü</span>
+      <div class="badge" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.35); color: #f59e0b;">
+        <span>⚠️ DEMO GİRİŞ — Gerçek Google Hesabı Değildir</span>
       </div>
 
       <div class="logos-container">
         <div class="logo-box">
-          <svg width="28" height="28" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-          </svg>
+          <span style="font-size: 26px;">👤</span>
         </div>
         <div class="pulse-line">
           <div class="pulse-dot"></div>
@@ -1011,21 +1138,22 @@ app.get('/auth/google/start', (req, res) => {
         </div>
       </div>
 
-      <h1>NovaTürk AI ile Bağlan</h1>
+      <h1>Misafir Olarak Devam Et</h1>
       <p class="desc">
-        Tıpkı VS Code ve Slack gibi; bilgisayarınızdaki Google oturumu kullanılarak NovaTürk AI masaüstü uygulamasına güvenle bağlanılıyor.
+        Bu bir DEMO oturumudur. Gerçek Google hesabınıza bağlanmaz, kişisel verinizi almaz — sadece
+        uygulama içinde geçici bir "misafir" oturumu açar. Gerçek Google girişi henüz kurulmadı.
       </p>
 
       <div class="account-preview">
-        <div class="avatar" id="avatarLetter">Ö</div>
+        <div class="avatar" id="avatarLetter">?</div>
         <div class="acc-details">
-          <h4 id="userName">Google Kullanıcısı</h4>
-          <p id="userEmail">Chrome Oturumu Doğrulandı</p>
+          <h4 id="userName">Misafir Kullanıcı</h4>
+          <p id="userEmail">Kişisel veri toplanmıyor</p>
         </div>
       </div>
 
       <button class="btn-confirm" id="btnConfirm" onclick="completeAuth()">
-        <span>🔐 NovaTürk'e Aktar ve Girişi Tamamla</span>
+        <span>👤 Misafir Olarak Devam Et</span>
       </button>
 
       <div class="footer-note">
@@ -1033,15 +1161,15 @@ app.get('/auth/google/start', (req, res) => {
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
-        <span>Google RFC 8252 Protokolü ile 256-Bit Uçtan Uca Şifreli</span>
+        <span>Gerçek Google girişi için GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET yapılandırılmalı</span>
       </div>
     </div>
 
     <div class="success-state" id="successState">
       <div class="success-icon">✓</div>
-      <h1>Bağlantı Başarılı!</h1>
+      <h1>Misafir Oturumu Açıldı</h1>
       <p class="desc">
-        Google hesabınız NovaTürk AI'ya aktarıldı. Masaüstü uygulamanıza dönebilirsiniz.
+        Geçici bir demo oturumu açıldı. Bu, gerçek bir Google hesabı değildir. Masaüstü uygulamanıza dönebilirsiniz.
       </p>
       <div style="font-size: 12px; color: #38bdf8; font-family: monospace;">
         NovaTürk AI penceresi açılıyor...
@@ -1052,18 +1180,14 @@ app.get('/auth/google/start', (req, res) => {
   <script>
     function completeAuth() {
       const btn = document.getElementById('btnConfirm');
-      btn.innerHTML = '<span>⏳ Aktarılıyor...</span>';
+      btn.innerHTML = '<span>⏳ Açılıyor...</span>';
       btn.style.opacity = '0.7';
       btn.disabled = true;
 
       fetch('/api/auth/google/callback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: 'Özkan Akçay',
-          email: 'ozkanakcayy2@gmail.com',
-          avatar: 'https://lh3.googleusercontent.com/a/default-user=s96-c'
-        })
+        body: JSON.stringify({ isDemo: true })
       })
       .then(res => res.json())
       .then(data => {
@@ -1087,6 +1211,69 @@ app.get('/auth/google/start', (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// Gerçek Google OAuth Geri Dönüş Noktası — yalnızca GOOGLE_CLIENT_ID/SECRET tanımlıysa erişilir
+// (/auth/google/start yalnızca o durumda buraya yönlendirir).
+app.get('/auth/google/callback', async (req, res) => {
+  const { code, error } = req.query;
+
+  if (error) {
+    return res.status(400).send(`Google girişi iptal edildi veya reddedildi: ${error}`);
+  }
+  if (!code || !process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return res.status(400).send('Google OAuth yapılandırması eksik (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).');
+  }
+
+  try {
+    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/auth/google/callback`;
+
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code'
+      })
+    });
+    const tokenData = await tokenRes.json();
+    if (!tokenData.access_token) {
+      throw new Error(tokenData.error_description || 'Google token alınamadı');
+    }
+
+    const profileRes = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+    const profile = await profileRes.json();
+
+    activeGoogleAuth = {
+      authenticated: true,
+      isDemo: false,
+      user: {
+        name: profile.name || 'Google Kullanıcısı',
+        email: profile.email || null,
+        avatar: profile.picture || null,
+        connectedAt: new Date().toISOString()
+      },
+      timestamp: Date.now()
+    };
+
+    console.log(`[Google Auth Bridge] GERÇEK Google oturumu doğrulandı: ${activeGoogleAuth.user.email}`);
+    res.send(`<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Giriş Başarılı</title></head>
+      <body style="background:#06080e;color:#f1f5f9;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;">
+        <div style="text-align:center;">
+          <h1>✓ Google ile giriş başarılı</h1>
+          <p>${activeGoogleAuth.user.name} (${activeGoogleAuth.user.email})</p>
+          <script>setTimeout(() => window.close(), 1500);</script>
+        </div>
+      </body></html>`);
+  } catch (err) {
+    console.error('[Google Auth Bridge] Hata:', err.message);
+    res.status(500).send('Google girişi başarısız: ' + err.message);
+  }
 });
 
 // 🧹 Eski Next.js / PWA Service Worker ve Önbellek Temizleyicileri (Kesin Çözüm - Express 5 Uyumlu)
