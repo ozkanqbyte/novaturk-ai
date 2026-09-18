@@ -334,33 +334,55 @@ export default function DynamicIsland({
         }}
         style={{
           boxShadow: isExpanded 
-            ? `0 30px 90px -10px rgba(0,0,0,0.95), 0 0 40px ${themeAccent}40, inset 0 1px 1px rgba(255,255,255,0.25)`
-            : `0 10px 35px -5px rgba(0,0,0,0.7), 0 0 20px rgba(255,255,255,0.06), inset 0 1px 1px rgba(255,255,255,0.2)`
+            ? `0 35px 100px -10px rgba(0,0,0,0.95), 0 0 50px ${activeMediaTab ? 'rgba(239,68,68,0.45)' : `${themeAccent}40`}, inset 0 1px 1px rgba(255,255,255,0.3)`
+            : activeMediaTab
+              ? `0 12px 40px -5px rgba(239,68,68,0.5), 0 0 25px rgba(239,68,68,0.25), inset 0 1px 1px rgba(255,255,255,0.3)`
+              : `0 10px 35px -5px rgba(0,0,0,0.7), 0 0 20px rgba(255,255,255,0.06), inset 0 1px 1px rgba(255,255,255,0.2)`
         }}
-        className={`cursor-pointer transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) border backdrop-blur-3xl flex flex-col items-center overflow-hidden ${
+        className={`cursor-pointer transition-all duration-500 cubic-bezier(0.32, 0.72, 0, 1) border backdrop-blur-3xl flex flex-col items-center overflow-hidden relative group/island ${
           isExpanded 
-            ? 'w-[94vw] sm:w-[500px] p-4 rounded-[28px] bg-black/90 border-white/25 text-white' 
-            : 'h-10 px-4 rounded-full bg-black/90 border-white/20 text-white hover:border-white/35 hover:scale-[1.02]'
+            ? 'w-[94vw] sm:w-[500px] p-4 rounded-[32px] bg-black/92 border-white/30 text-white' 
+            : activeMediaTab
+              ? 'h-11 px-4 rounded-full bg-black/90 border-red-500/40 text-white hover:border-red-400 hover:scale-[1.03]'
+              : 'h-10 px-4 rounded-full bg-black/90 border-white/20 text-white hover:border-white/35 hover:scale-[1.02]'
         }`}
       >
         {/* ============================================================ */}
-        {/* 1. KAPSÜL / KAPALI HAL (APPLE VISIONOS GLASS NOTCH)          */}
+        {/* 1. KAPSÜL / KAPALI HAL (APPLE VISIONOS GLASS NOTCH & MEDIA)  */}
         {/* ============================================================ */}
-        <div className="w-full flex items-center justify-between gap-3 h-full">
+        <div className="w-full flex items-center justify-between gap-2.5 h-full">
           
-          {/* Sol İkon & Sürükleme Tutamacı */}
+          {/* Sol İkon & Sürükleme Tutamacı veya Dönen Mini Plak */}
           <div className="flex items-center gap-2 shrink-0">
-            <div 
-              style={{ backgroundColor: `${themeAccent}25`, borderColor: `${themeAccent}50` }}
-              className="w-5 h-5 rounded-full border flex items-center justify-center relative shadow-sm"
-            >
-              <Zap className="w-3 h-3 text-sky-400 fill-current animate-pulse" />
-              {isSpeaking && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              )}
-            </div>
+            {activeMediaTab ? (
+              /* 💿 Dönen Mini Vinil Plak Animasyonu */
+              <div 
+                className="relative w-6 h-6 rounded-full overflow-hidden border border-red-400/50 shadow-[0_0_12px_rgba(239,68,68,0.6)] shrink-0 animate-spin-slow"
+                title={mediaState?.title || "Müzik Çalıyor"}
+              >
+                {mediaState?.thumbnail ? (
+                  <img src={mediaState.thumbnail} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 flex items-center justify-center">
+                    <Music className="w-3 h-3 text-white" />
+                  </div>
+                )}
+                {/* Plak Göbeği */}
+                <div className="absolute inset-0 m-auto w-1.5 h-1.5 rounded-full bg-black border border-white/60" />
+              </div>
+            ) : (
+              <div 
+                style={{ backgroundColor: `${themeAccent}25`, borderColor: `${themeAccent}50` }}
+                className="w-5 h-5 rounded-full border flex items-center justify-center relative shadow-sm"
+              >
+                <Zap className="w-3 h-3 text-sky-400 fill-current animate-pulse" />
+                {isSpeaking && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </div>
+            )}
 
-            {/* Sürükleme İkonu Göstergesi */}
+            {/* Sürükleme İkonu */}
             <span 
               className="p-1 rounded-md text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors cursor-grab" 
               title="Adayı Ekranda İstediğin Yere Sürükle"
@@ -373,22 +395,22 @@ export default function DynamicIsland({
             </span>
           </div>
 
-          {/* Orta Kısım: Sorgu, Durum, Medya veya Karşılama */}
-          <div className="flex items-center gap-2 min-w-0 flex-1 justify-center px-2">
-            {activeMediaTab ? (
-              <div className="flex items-center gap-2 text-xs font-medium text-red-300 truncate">
-                <Music className="w-3.5 h-3.5 text-red-400 shrink-0 animate-bounce" />
-                <span className="truncate max-w-[160px] text-white/90 font-medium">
-                  {activeMediaTab.title || 'YouTube Çalıyor'}
-                </span>
-                {/* Canlı Equalizer */}
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <span className="w-1 h-3 bg-red-400 animate-pulse rounded-full" />
-                  <span className="w-1 h-2 bg-red-400 animate-pulse delay-75 rounded-full" />
-                  <span className="w-1 h-3.5 bg-red-400 animate-pulse delay-150 rounded-full" />
+          {/* Orta Kısım: ÇALAN ŞARKININ GERÇEK ADI VEYA DURUM */}
+          <div className="flex items-center gap-2 min-w-0 flex-1 justify-center px-1">
+            {activeMediaTab ? (() => {
+              const displaySong = (mediaState?.title && mediaState.title !== 'www.youtube.com' && mediaState.title !== 'YouTube')
+                ? mediaState.title
+                : (activeMediaTab.title && activeMediaTab.title !== 'www.youtube.com' ? activeMediaTab.title : 'YouTube Canlı Müzik');
+
+              return (
+                <div className="flex items-center gap-2 min-w-0 max-w-[210px] sm:max-w-[280px]">
+                  <span className="w-2 h-2 rounded-full bg-red-400 animate-ping shrink-0" />
+                  <span className="text-xs font-semibold text-white tracking-tight truncate drop-shadow-sm">
+                    {displaySong}
+                  </span>
                 </div>
-              </div>
-            ) : isSearching ? (
+              );
+            })() : isSearching ? (
               <div className="flex items-center gap-1.5 text-xs text-sky-300 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" />
                 <span className="truncate max-w-[160px] font-medium">Taranıyor...</span>
@@ -411,9 +433,37 @@ export default function DynamicIsland({
             )}
           </div>
 
-          {/* Sağ Kısım: Durum, Genişletme & Gizleme Butonu */}
-          <div className="flex items-center gap-1 shrink-0">
-            {isSpeaking && (
+          {/* Sağ Kısım: Canlı 4-Bar Equalizer, Hızlı Oynat/Durdur, Genişletme & Gizleme */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {activeMediaTab && (
+              <>
+                {/* 🎶 Canlı Apple 4-Bar Ses Dalgaları (Equalizer) */}
+                <div className="flex items-end gap-0.5 h-4 px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/30">
+                  <span className="w-1 bg-red-400 rounded-full animate-eq-1" />
+                  <span className="w-1 bg-rose-400 rounded-full animate-eq-2" />
+                  <span className="w-1 bg-amber-400 rounded-full animate-eq-3" />
+                  <span className="w-1 bg-red-400 rounded-full animate-eq-4" />
+                </div>
+
+                {/* ⏯️ Kompakt Notch Hızlı Oynat / Durdur Butonu */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sendMediaCmd('toggle');
+                  }}
+                  className="p-1 rounded-full bg-white/15 hover:bg-white/30 text-white transition-all hover:scale-110 active:scale-90"
+                  title={mediaState?.paused ? "Oynat" : "Duraklat"}
+                >
+                  {mediaState?.paused ? (
+                    <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
+                  ) : (
+                    <Pause className="w-2.5 h-2.5 fill-current" />
+                  )}
+                </button>
+              </>
+            )}
+
+            {isSpeaking && !activeMediaTab && (
               <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-mono">
                 <span className="w-1 h-3 bg-emerald-400 animate-pulse rounded-full" />
                 <span className="w-1 h-2 bg-emerald-400 animate-pulse delay-75 rounded-full" />
