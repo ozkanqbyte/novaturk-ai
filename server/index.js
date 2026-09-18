@@ -405,9 +405,40 @@ app.get('/api/proxy', async (req, res) => {
         html = `${revealStyle}\n${proxyHookScript}\n${html}`;
       }
 
-      // Frame-busting scriptlerini zararsız hale getir
-      html = html.replace(/if\s*\(top\s*!==?\s*self\)/gi, 'if (false)');
-      html = html.replace(/top\.location\s*=/gi, 'window._noop_location =');
+      // Upstream hata (403 bot koruması vb.) veya boş içerik dönerse beyaz ekran yerine NovaTürk Kalkan Kartı göster
+      if (upstreamRes.status >= 400 || !html || html.trim().length < 50) {
+        return res.status(200).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>${parsedUrl.hostname} - NovaTürk Kalkan</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a12; color: #f1f5f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+              .card { max-width: 480px; width: 100%; padding: 36px 30px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 24px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.6); backdrop-filter: blur(16px); }
+              .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; background: rgba(56, 189, 248, 0.1); color: #38bdf8; font-size: 12px; font-weight: 600; margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.2); }
+              h2 { font-size: 22px; font-weight: 700; margin: 0 0 10px; color: #fff; }
+              p { color: #94a3b8; font-size: 13px; line-height: 1.6; margin: 0 0 24px; }
+              .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px 20px; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #040813; font-weight: 700; font-size: 14px; border-radius: 14px; text-decoration: none; box-shadow: 0 8px 25px rgba(56, 189, 248, 0.25); transition: transform 0.15s; }
+              .btn:hover { transform: scale(1.02); }
+              .hint { font-size: 11px; color: #64748b; margin-top: 18px; line-height: 1.5; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <div class="badge">🛡️ NovaTürk Güvenlik Kalkanı</div>
+              <h2>${parsedUrl.hostname}</h2>
+              <p>Bu platform (kurumsal güvenlik ve bot koruması nedeniyle) web içi proxy çerçevelerine erişimi kısıtlamaktadır. Tüm özelliklere, hesabınıza ve sepetinize sıfır engelle erişmek için tek tıkla resmi sayfayı açabilirsiniz.</p>
+              <a class="btn" href="${parsedUrl.href}" target="_blank" rel="noopener noreferrer">
+                <span>Resmî Platformda Güvenle Aç</span> ↗
+              </a>
+              <div class="hint">💡 NovaTürk PC Masaüstü uygulamasında tüm siteler doğrudan sekme içinde açılır.</div>
+            </div>
+          </body>
+          </html>
+        `);
+      }
 
       return res.status(upstreamRes.status).send(html);
     }

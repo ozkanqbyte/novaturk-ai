@@ -403,6 +403,7 @@ export default function InAppBrowserTab({
                 src={currentUrl}
                 partition={tab.isIncognito ? "nopersist_incognito" : "persist:novaturk_browsing"}
                 allowpopups="true"
+                preload={window.electron?.webviewPreloadPath}
                 className="w-full h-full border-0 absolute inset-0"
                 style={{ width: '100%', height: '100%' }}
               />
