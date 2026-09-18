@@ -5,7 +5,7 @@ import {
   Globe, Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { unescapeHtml } from '../services/searchService';
+import { unescapeHtml, API_BASE } from '../services/searchService';
 import { sound } from '../services/soundService';
 
 const isElectronApp = () => {
@@ -468,14 +468,37 @@ export default function InAppBrowserTab({
                 style={{ width: '100%', height: '100%' }}
               />
             ) : (
-              <iframe
-                ref={iframeRef}
-                key={reloadKey}
-                src={currentUrl}
-                title={cleanTitle}
-                className="w-full h-full border-0 absolute inset-0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; microphone; camera; web-share"
-              />
+              <>
+                {/* 🛡️ NovaTürk Canlı Proxy Kalkanı Rozeti */}
+                <div className="absolute top-2.5 right-4 z-30 pointer-events-auto flex items-center gap-2">
+                  <div className="px-2.5 py-1 rounded-full bg-slate-900/85 border border-white/20 text-slate-200 text-[11px] font-medium backdrop-blur-md shadow-lg flex items-center gap-1.5">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    <span>Canlı Proxy Kalkanı Aktif</span>
+                  </div>
+                  <a
+                    href={currentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 rounded-full bg-slate-900/85 border border-white/20 text-slate-300 hover:text-white backdrop-blur-md shadow-lg transition-colors"
+                    title="Yeni Sekmede Doğrudan Aç"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+
+                <iframe
+                  ref={iframeRef}
+                  key={reloadKey}
+                  src={
+                    (currentUrl && currentUrl.startsWith('http'))
+                      ? `${API_BASE}/api/proxy?url=${encodeURIComponent(currentUrl)}`
+                      : currentUrl
+                  }
+                  title={cleanTitle}
+                  className="w-full h-full border-0 absolute inset-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; microphone; camera; web-share"
+                />
+              </>
             )}
           </div>
         ) : (

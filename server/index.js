@@ -161,6 +161,106 @@ app.get('/api/sponsorblock', async (req, res) => {
   }
 });
 
+// 🌐 2.6 CANLI WEB PROXY & BAŞLIK TEMİZLEYİCİ (X-Frame-Options & CSP Engel Kaldırıcı)
+app.get('/api/proxy', async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    return res.status(400).send('Geçersiz veya eksik URL parametresi.');
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(targetUrl.startsWith('http') ? targetUrl : 'https://' + targetUrl);
+  } catch (e) {
+    return res.status(400).send('Geçersiz URL biçimi.');
+  }
+
+  // SSRF ve yerel ağ koruması
+  const hostname = parsedUrl.hostname.toLowerCase();
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.16.') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.local')
+  ) {
+    return res.status(403).send('Yerel ağ adreslerine erişim engellenmiştir.');
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    const upstreamRes = await fetch(parsedUrl.href, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'no-cache'
+      },
+      redirect: 'follow',
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    const contentType = upstreamRes.headers.get('content-type') || 'text/html';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('X-Proxy-By', 'NovaTurk-AI-Unblocker');
+
+    if (contentType.includes('text/html')) {
+      let html = await upstreamRes.text();
+      const origin = parsedUrl.origin;
+      const baseTag = `<base href="${origin}/">`;
+
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
+      } else {
+        html = `${baseTag}\n${html}`;
+      }
+
+      // Frame-busting scriptlerini zararsız hale getir
+      html = html.replace(/if\s*\(top\s*!==?\s*self\)/gi, 'if (false)');
+      html = html.replace(/top\.location\s*=/gi, 'window._noop_location =');
+
+      return res.status(upstreamRes.status).send(html);
+    }
+
+    const buffer = await upstreamRes.arrayBuffer();
+    return res.status(upstreamRes.status).send(Buffer.from(buffer));
+
+  } catch (err) {
+    console.warn('[Proxy Hatası]', targetUrl, err.message);
+    res.status(502).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>NovaTürk Kalkan - Sayfa Yüklenemedi</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; background: #070a12; color: #f1f5f9; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+          .card { max-width: 480px; padding: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; text-align: center; }
+          h2 { color: #38bdf8; margin-top: 0; }
+          p { color: #94a3b8; font-size: 14px; line-height: 1.6; }
+          a { display: inline-block; margin-top: 16px; padding: 10px 20px; background: #38bdf8; color: #000; font-weight: bold; border-radius: 12px; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h2>🛡️ NovaTürk Güvenlik Kalkanı</h2>
+          <p>Hedef web sitesi (${parsedUrl.hostname}) doğrudan proxy bağlantısına yanıt vermedi.</p>
+          <a href="${parsedUrl.href}" target="_blank" rel="noopener noreferrer">Resmî Sitede Doğrudan Aç ↗</a>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
 // 3. Yerel Veritabanı Arama Uç Noktası
 app.get('/api/search', (req, res) => {
   const query = req.query.q || '';

@@ -250,14 +250,7 @@ const isElectronApp = () => {
       addVisitHistory(result.link, cleanTitle);
     }
 
-    // 🌐 Web Sürümünde (Vercel vb. normal tarayıcılarda):
-    // Claude, Google, GitHub vb. modern siteler güvenlik (X-Frame-Options) nedeniyle
-    // iframe içinde 'Bağlanmayı reddetti' hatası verir.
-    // Bu yüzden web tarayıcısında daima güvenle yeni sekmede açılır!
-    if (!isElectronApp()) {
-      window.open(result.link, '_blank', 'noopener,noreferrer');
-      return;
-    }
+    // 🌐 Canlı Proxy sayesinde web sürümünde de sekme içinde güvenle açılabilir!
 
     if (!forceNewTab) {
       // 🌟 GOOGLE CHROME GİBİ: AYNI SEKMEDE AÇ VE GEÇMİŞİ İLERLET!
