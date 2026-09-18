@@ -660,6 +660,37 @@ const isElectronApp = () => {
     }
   };
 
+  // 6.1 Arama Terimini Yeni Sekmede Aç ve Hemen Ara
+  const handleOpenSearchInNewTab = async (queryToSearch) => {
+    if (!queryToSearch || !queryToSearch.trim()) return;
+    sound.playChime();
+    const cleanQ = unescapeHtml(queryToSearch.trim());
+    const newId = `search_${Date.now()}`;
+    const newTab = {
+      id: newId,
+      type: 'search',
+      title: `Arama: ${cleanQ.slice(0, 18)}${cleanQ.length > 18 ? '...' : ''}`,
+      query: cleanQ,
+      results: null,
+      hasSearched: true,
+      isLoading: true,
+      isIncognito: activeTab.isIncognito,
+      history: [cleanQ],
+      historyIndex: 0
+    };
+    setTabs(prev => [...prev, newTab]);
+    setActiveTabId(newId);
+    if (!activeTab.isIncognito) {
+      addSearchHistory(cleanQ);
+    }
+    try {
+      const data = await executeSearch(cleanQ, isDeepSearch);
+      setTabs(prev => prev.map(t => t.id === newId ? { ...t, results: data, isLoading: false } : t));
+    } catch {
+      setTabs(prev => prev.map(t => t.id === newId ? { ...t, isLoading: false } : t));
+    }
+  };
+
   // 7. Ana Sayfaya Dön (Logoya Tıklandığında)
   const handleHomeClick = () => {
     sound.playClick();
@@ -852,15 +883,7 @@ const isElectronApp = () => {
                 </button>
               </div>
 
-              {/* 🌟 MODEL 3: ANA EKRAN PRESTİJ VİTRİNİ & SPONSORLU PARTNERLER */}
-              <SponsoredShowcase
-                onSelectPartner={(partner) => handleOpenInAppTab({ link: partner.link, title: partner.title, displayLink: partner.displayLink })}
-                onOpenBusinessModal={() => setIsBusinessModalOpen(true)}
-                isDark={isDark}
-                currentTheme={currentTheme}
-              />
-
-              {/* 🌟 APPLE VISIONOS SPEED DIAL (SIK ZİYARET EDİLEN KISAYOLLAR) */}
+              {/* 🌟 1. APPLE SAFARI FAVORİLER (KULLANICININ EKLEDİĞİ ŞEYLER) */}
               <SpeedDialGrid 
                 bookmarks={bookmarks}
                 onSelectBookmark={handleSelectBookmark}
@@ -870,7 +893,7 @@ const isElectronApp = () => {
                 currentTheme={currentTheme}
               />
 
-              {/* 🌟 GOOGLE TARZI SON ZİYARET EDİLEN SİTELER VİTRİNİ */}
+              {/* 🌟 2. APPLE SAFARI SIK ZİYARET EDİLENLER */}
               <RecentVisitsSection 
                 history={historyList}
                 onSelectVisit={handleOmnibarNavigate}
@@ -881,75 +904,14 @@ const isElectronApp = () => {
                 isDark={isDark}
               />
 
-              {/* Apple Minimalist Feature Pillars */}
-              <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
-                {[
-                  {
-                    icon: ShieldCheck,
-                    title: '50 Türk Sitesi İndeksi',
-                    desc: 'Webrazzi, AA, TÜBİTAK ve üniversitelerden çekilen reklamsız veritabanı.'
-                  },
-                  {
-                    icon: Bot,
-                    title: '4 Otonom Ajan',
-                    desc: 'Kâşif, Hâkim, Analist ve İcracı sorguyu eşzamanlı olarak işler.'
-                  },
-                  {
-                    icon: BookOpen,
-                    title: 'Reklamsız Okuyucu',
-                    desc: 'Siteden ayrılmadan, çerez ve reklamları temizlenmiş saf metni oku.'
-                  },
-                  {
-                    icon: Server,
-                    title: 'Admin Masası',
-                    desc: 'Crawler durumu, canlı indeksleme ve kara liste yönetim konsolu.'
-                  }
-                ].map((f, i) => {
-                  const Icon = f.icon;
-                  const accent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
-                  return (
-                    <div
-                      key={i}
-                      onClick={() => {
-                        sound.playClick();
-                        if (i === 3) setIsAdminOpen(true);
-                      }}
-                      className={`apple-glass-card rounded-2xl p-3.5 border cursor-pointer group transition-all duration-300 ${
-                        isDark ? 'border-white/8 hover:border-white/20' : 'border-black/6 hover:border-black/15'
-                      }`}
-                    >
-                      <div 
-                        style={{
-                          backgroundColor: `${accent}18`,
-                          borderColor: `${accent}35`,
-                          color: accent
-                        }}
-                        className="w-7 h-7 rounded-xl flex items-center justify-center mb-2.5 border transition-all duration-300 group-hover:scale-110 shadow-sm"
-                      >
-                        <Icon className="w-3.5 h-3.5" />
-                      </div>
-                      <h3 className="text-xs font-semibold mb-0.5 tracking-tight group-hover:text-current transition-colors">
-                        {f.title}
-                      </h3>
-                      <p className={`text-[11px] leading-relaxed font-normal ${
-                        isDark ? 'text-slate-400' : 'text-slate-600'
-                      }`}>
-                        {f.desc}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Minimalist Trust Indicator */}
-              <div className="mt-8 flex items-center justify-center gap-6 text-xs opacity-50">
-                <span>Sıfır Reklam</span>
+              {/* Minimalist Safari Footer Note */}
+              <div className="mt-4 mb-2 flex items-center justify-center gap-4 text-[11px] text-slate-400 opacity-60 font-sans">
+                <span>🛡️ Reklamsız Güvenli Gezinti</span>
                 <span>•</span>
-                <span>50 Yerli Web Sitesi</span>
+                <span>🔒 Gizli Arama Modu</span>
                 <span>•</span>
-                <span>%100 Gizlilik</span>
+                <span>⚡ Hızlı & Yerli İndeks</span>
               </div>
-
             </div>
 
             {/* Apple Minimalist Footer (Sadece Arama Sayfasında) */}
@@ -1184,10 +1146,22 @@ const isElectronApp = () => {
       <HistoryModal 
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        onNavigate={handleOmnibarNavigate}
-        onNewTab={(url) => {
-          if (url) handleOpenInAppTab({ link: url, title: url });
-          else handleNewTab();
+        onNavigate={(target, item) => {
+          const isUrl = target && (target.startsWith('http://') || target.startsWith('https://') || (target.includes('.') && !target.includes(' ')));
+          if (isUrl) {
+            handleOmnibarNavigate(target);
+          } else {
+            handleSearch(target);
+          }
+        }}
+        onNewTab={(target, item) => {
+          const isUrl = target && (target.startsWith('http://') || target.startsWith('https://') || (target.includes('.') && !target.includes(' ')));
+          if (isUrl) {
+            const finalUrl = (target.startsWith('http://') || target.startsWith('https://')) ? target : `https://${target}`;
+            handleOpenInAppTab({ link: finalUrl, title: finalUrl }, true);
+          } else {
+            handleOpenSearchInNewTab(target);
+          }
         }}
         isDark={isDark}
       />

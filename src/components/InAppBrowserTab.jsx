@@ -507,7 +507,7 @@ export default function InAppBrowserTab({
             ) : (
               <>
                 {/* 🛡️ NovaTürk Canlı Proxy Kalkanı Rozeti */}
-                <div className="absolute top-2.5 right-4 z-30 pointer-events-auto flex items-center gap-2">
+                <div className="hidden md:flex absolute top-2.5 right-4 z-30 pointer-events-auto items-center gap-2">
                   <div className="px-2.5 py-1 rounded-full bg-slate-900/85 border border-white/20 text-slate-200 text-[11px] font-medium backdrop-blur-md shadow-lg flex items-center gap-1.5">
                     <ShieldCheck className="w-3 h-3 text-emerald-400" />
                     <span>Canlı Proxy Kalkanı Aktif</span>

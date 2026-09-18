@@ -97,9 +97,9 @@ export default function HistoryModal({
 
   const handleItemClick = (item) => {
     sound.playChime();
-    const target = item.type === 'visit' ? item.url : item.text;
+    const target = item.type === 'visit' ? item.url : (item.text || item.title || item.url);
     if (onNavigate) {
-      onNavigate(target);
+      onNavigate(target, item);
       onClose();
     }
   };
@@ -108,8 +108,8 @@ export default function HistoryModal({
     e.stopPropagation();
     sound.playChime();
     if (onNewTab) {
-      const target = item.type === 'visit' ? item.url : item.text;
-      onNewTab(target);
+      const target = item.type === 'visit' ? item.url : (item.text || item.title || item.url);
+      onNewTab(target, item);
       onClose();
     }
   };
@@ -237,20 +237,20 @@ export default function HistoryModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/75 backdrop-blur-2xl animate-in fade-in duration-200 select-none"
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6 bg-black/85 backdrop-blur-2xl animate-in fade-in duration-200 select-none"
       onClick={onClose}
     >
-      {/* Apple Safari iOS Drawer Container */}
+      {/* Apple Safari iOS Container: Mobilde Tam Ekran, Masaüstünde VisionOS Cam Pencere */}
       <div
         style={{
           boxShadow: isDark
             ? '0 25px 70px -10px rgba(0,0,0,0.9), 0 0 35px rgba(56,189,248,0.15), inset 0 1px 1px rgba(255,255,255,0.15)'
             : '0 25px 70px -10px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.8)'
         }}
-        className={`w-full max-w-3xl h-[92vh] sm:h-[85vh] sm:max-h-[760px] rounded-t-[32px] sm:rounded-3xl border-t sm:border overflow-hidden flex flex-col transition-all relative animate-in slide-in-from-bottom-6 duration-300 ${
+        className={`w-full max-w-3xl h-full sm:h-[85vh] sm:max-h-[760px] rounded-none sm:rounded-3xl border-0 sm:border overflow-hidden flex flex-col transition-all relative animate-in zoom-in-95 sm:zoom-in-100 duration-200 ${
           isDark
-            ? 'bg-[#0b0e17]/95 sm:bg-[#0c0f1a]/92 border-white/15 text-slate-100'
-            : 'bg-white/95 border-black/10 text-slate-900'
+            ? 'bg-[#0b0e17] sm:bg-[#0c0f1a]/92 border-white/15 text-slate-100'
+            : 'bg-white border-black/10 text-slate-900'
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -258,13 +258,8 @@ export default function HistoryModal({
         <div className="absolute top-0 right-1/4 w-56 h-56 bg-sky-500/15 rounded-full blur-3xl pointer-events-none -z-10" />
         <div className="absolute bottom-10 left-1/4 w-56 h-56 bg-purple-500/15 rounded-full blur-3xl pointer-events-none -z-10" />
 
-        {/* 📱 Apple iOS Mobile Pull Indicator */}
-        <div className="pt-2.5 pb-1 flex justify-center sm:hidden">
-          <div className="w-10 h-1.5 rounded-full bg-white/25 active:bg-white/40 cursor-grab" />
-        </div>
-
         {/* 1. Apple Navigation Bar Header */}
-        <div className={`px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between border-b ${
+        <div className={`px-4 sm:px-6 pt-[calc(0.85rem+env(safe-area-inset-top,0px))] pb-3 sm:py-4 flex items-center justify-between border-b ${
           isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/5 bg-slate-50/50'
         }`}>
           {/* Sol: Başlık & Rozet */}
