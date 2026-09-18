@@ -108,7 +108,7 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
 
   return (
     <div className={`w-full transition-all duration-300 ${isCompact ? 'max-w-4xl' : 'max-w-2xl mx-auto'}`}>
-      <form onSubmit={handleSubmit} className="relative z-40 w-full">
+      <form onSubmit={handleSubmit} className="relative z-[70] w-full">
         {/* Apple VisionOS Minimalist Dynamic Search Capsule */}
         <div 
           style={{
