@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import ReaderModeDrawer from './ReaderModeDrawer';
+import ImageDetailModal from './ImageDetailModal';
 import ComparisonMatrix from './ComparisonMatrix';
 import { sound } from '../services/soundService';
 import { unescapeHtml } from '../services/searchService';
@@ -1167,21 +1168,90 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
-          {/* Görseller Tab */}
+          {/* 🌟 3.5 DOĞRULANMIŞ GÖRSELLER TABI (Apple Photos & VisionOS Galeri Tasarımı) */}
           {activeTab === 'images' && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {visuals.map((img, i) => (
-                <div 
-                  key={i}
-                  onClick={() => setSelectedImage(img)}
-                  className="group relative rounded-2xl overflow-hidden aspect-video bg-black/20 border border-white/10 cursor-pointer hover:scale-[1.02] transition-transform"
-                >
-                  <img src={img.thumb || img.url} alt={img.title} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-2.5 flex flex-col justify-end">
-                    <span className="text-white text-xs font-semibold truncate">{img.title}</span>
+            <div className="space-y-4">
+              {/* Galeri Üst Bilgi Barı */}
+              <div className={`p-4 sm:p-5 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                isDark 
+                  ? 'bg-slate-900/70 border-white/10 backdrop-blur-xl' 
+                  : 'bg-white/80 border-black/8 shadow-sm backdrop-blur-xl'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-2xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+                    <ImageIcon className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold tracking-tight text-white dark:text-white font-['Outfit',sans-serif]">
+                        Doğrulanmış Medya & Görsel Galerisi
+                      </h3>
+                      <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 font-mono font-bold border border-sky-500/20">
+                        {visuals.length} Yüksek Çözünürlüklü Görsel
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Wikimedia Commons ve doğrulanmış görsel dizininden yüksek çözünürlüklü fotoğraflar.
+                    </p>
                   </div>
                 </div>
-              ))}
+
+                <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 flex items-center gap-1.5">
+                    <Maximize2 className="w-3 h-3 text-sky-400" />
+                    <span>Büyütmek için fotoğrafa dokunun</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Görseller Izgarası */}
+              {visuals.length === 0 ? (
+                <div className={`p-12 text-center rounded-3xl border ${
+                  isDark ? 'bg-white/[0.02] border-white/10' : 'bg-black/[0.02] border-black/10'
+                }`}>
+                  <ImageIcon className="w-10 h-10 mx-auto opacity-30 text-sky-400 mb-3" />
+                  <h4 className="text-sm font-semibold mb-1">Görseller Taranıyor...</h4>
+                  <p className="text-xs opacity-60 max-w-sm mx-auto">
+                    "{query}" araması ile ilgili görsel sonuçları hazırlanıyor.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+                  {visuals.map((img, i) => (
+                    <div 
+                      key={img.id || i}
+                      onClick={() => {
+                        sound.playClick();
+                        setSelectedImage(img);
+                      }}
+                      className="group relative rounded-2xl sm:rounded-3xl overflow-hidden aspect-[4/3] bg-black/30 border border-white/10 hover:border-sky-500/40 cursor-pointer shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1"
+                    >
+                      <img 
+                        src={img.thumb || img.url} 
+                        alt={img.title} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                        loading="lazy"
+                      />
+
+                      {/* Sağ Üst Genişlet / İncele İkonu */}
+                      <div className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:scale-105 shadow-lg">
+                        <Maximize2 className="w-3.5 h-3.5" />
+                      </div>
+
+                      {/* Alt Bilgi Katmanı (Hover Gradients) */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-3 flex flex-col justify-end">
+                        <span className="text-white text-xs font-semibold line-clamp-2 leading-snug drop-shadow-md">
+                          {img.title}
+                        </span>
+                        <div className="flex items-center justify-between text-[10px] text-slate-300 mt-1">
+                          <span className="opacity-80 truncate max-w-[100px]">{img.source}</span>
+                          <span className="font-mono text-sky-300">{img.dimensions || 'HD'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1551,6 +1621,15 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
         isOpen={!!readerArticle}
         onClose={() => setReaderArticle(null)}
         article={readerArticle}
+        isDark={isDark}
+      />
+
+      <ImageDetailModal
+        isOpen={!!selectedImage}
+        onClose={() => setSelectedImage(null)}
+        image={selectedImage}
+        images={visuals}
+        onSelectImage={(newImg) => setSelectedImage(newImg)}
         isDark={isDark}
       />
 

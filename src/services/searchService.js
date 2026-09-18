@@ -537,7 +537,7 @@ async function fetchRealVisuals(query) {
   // 2. Yedek: Wikimedia Commons Açık Görsel API
   try {
     const cleanQ = encodeURIComponent(query.trim());
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanQ}&gsrnamespace=6&prop=imageinfo&iiprop=url|mime&format=json&origin=*&gsrlimit=12`;
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${cleanQ}&gsrnamespace=6&prop=imageinfo&iiprop=url|mime|size|dimensions&iiurlwidth=800&format=json&origin=*&gsrlimit=18`;
     const res = await fetch(url);
     if (!res.ok) return getDefaultVisuals(query);
     const data = await res.json();
@@ -549,12 +549,22 @@ async function fetchRealVisuals(query) {
         return /\.(jpe?g|png|webp)($|\?)/i.test(u) && !u.includes('Signature') && !u.includes('logo') && !u.includes('Icon');
       })
       .map(p => {
+        const info = p.imageinfo?.[0] || {};
         const rawTitle = p.title.replace(/^File:/i, '').replace(/\.[^.]+$/, '').replace(/_/g, ' ');
+        const fullUrl = info.url || '';
+        const thumbUrl = info.thumburl || fullUrl;
         return {
           id: p.pageid,
           title: rawTitle,
-          thumb: p.imageinfo[0].url,
-          source: 'Wikimedia Commons'
+          url: fullUrl,
+          thumb: thumbUrl,
+          width: info.width || null,
+          height: info.height || null,
+          dimensions: info.width && info.height ? `${info.width} × ${info.height}` : 'HD Görsel',
+          size: info.size ? `${Math.round(info.size / 1024)} KB` : null,
+          descriptionUrl: info.descriptionurl || fullUrl,
+          source: 'Wikimedia Commons',
+          domain: 'commons.wikimedia.org'
         };
       });
 
@@ -569,20 +579,32 @@ function getDefaultVisuals(query) {
     {
       id: 1,
       title: `${query} - İnovasyon & Teknoloji`,
+      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1080,
+      dimensions: '1920 × 1080',
+      source: 'Unsplash'
     },
     {
       id: 2,
       title: `${query} - Dijital Ağlar ve Gelecek`,
+      url: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1280,
+      dimensions: '1920 × 1280',
+      source: 'Unsplash'
     },
     {
       id: 3,
       title: `${query} - Stratejik Araştırma`,
+      url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1920&auto=format&fit=crop&q=85',
       thumb: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&auto=format&fit=crop&q=80',
-      source: 'unsplash.com'
+      width: 1920,
+      height: 1080,
+      dimensions: '1920 × 1080',
+      source: 'Unsplash'
     }
   ];
 }
