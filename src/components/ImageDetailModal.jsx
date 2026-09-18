@@ -5,6 +5,7 @@ import {
   Sparkles, Image as ImageIcon, Share2, Info, CheckCircle2
 } from 'lucide-react';
 import { sound } from '../services/soundService';
+import { downloadImage } from './ImagesPanel';
 
 export default function ImageDetailModal({
   isOpen,
@@ -70,7 +71,7 @@ export default function ImageDetailModal({
 
   if (!isOpen || !image) return null;
 
-  const activeSrc = image.url || image.thumb;
+  const activeSrc = image.fullImage || image.url || image.thumb;
   const displayTitle = image.title || 'Fotoğraf Detayı';
   const displaySource = image.source || 'Wikimedia Commons';
   const resolutionText = image.width && image.height ? `${image.width} × ${image.height}` : (image.dimensions || 'HD Çözünürlük');
@@ -84,23 +85,9 @@ export default function ImageDetailModal({
   };
 
   // İndir
-  const handleDownload = async () => {
+  const handleDownload = () => {
     sound.playClick();
-    try {
-      const response = await fetch(activeSrc);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      const cleanName = displayTitle.toLowerCase().replace(/[^a-z0-9]/gi, '-').slice(0, 40);
-      link.download = `novaturk-${cleanName || 'gorsel'}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch {
-      window.open(activeSrc, '_blank');
-    }
+    downloadImage({ ...image, fullImage: activeSrc, title: displayTitle });
   };
 
   // Tam ekran modu toggle

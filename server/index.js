@@ -9,6 +9,7 @@ import { rateLimit } from 'express-rate-limit';
 import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase, logResultClick, getClickAnalytics, getSuggestions, suggestSpellingCorrection, rebuildSearchVocabulary } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
+import { registerMediaRoutes } from './media.js';
 import { initSafetyTables, refreshThreatFeeds, filterUnsafeResults, getSafetyOverview, scanIndexForSpam, checkThreat } from './safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +102,7 @@ async function assertSafeCrawlUrl(rawUrl) {
 // Veritabanını başlat
 initDatabase();
 initSafetyTables();
+registerMediaRoutes(app, { db, assertSafeCrawlUrl });
 
 // 🛡️ Güvenlik filtreli arama: bilinen zararlı adresler sonuçtan çıkar, spam puanı
 // yüksek sayfalar düşer, orta düzey spam sıralamada cezalandırılır.
@@ -964,135 +966,6 @@ app.get('/api/sites', (req, res) => {
   }
 });
 
-// 📰 2.8 Canlı Türkiye Haberleri (Google News TR RSS Proxy - %100 Gerçek & Ücretsiz)
-app.get('/api/news', async (req, res) => {
-  const query = (req.query.q || '').trim();
-  try {
-    const rssUrl = query
-      ? `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=tr&gl=TR&ceid=TR:tr`
-      : `https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr`;
-
-    const response = await fetch(rssUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
-      }
-    });
-
-    if (!response.ok) {
-      return res.json({ success: false, count: 0, news: [] });
-    }
-
-    const xmlText = await response.text();
-    const rawItems = xmlText.split('<item>').slice(1);
-    
-    const items = rawItems.slice(0, 20).map((it, idx) => {
-      let title = it.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '';
-      let link = it.match(/<link>([\s\S]*?)<\/link>/)?.[1] || '';
-      let pubDate = it.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || '';
-      let desc = it.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '';
-      let sourceMatch = it.match(/<source[^>]*url="([^"]+)"[^>]*>([\s\S]*?)<\/source>/) || it.match(/<source[^>]*>([\s\S]*?)<\/source>/);
-      let source = sourceMatch ? (sourceMatch[2] || sourceMatch[1] || '') : '';
-      let sourceUrl = sourceMatch && sourceMatch[1] ? sourceMatch[1] : '';
-      
-      let domain = '';
-      try { 
-        if (sourceUrl) domain = new URL(sourceUrl).hostname.replace(/^www\./, ''); 
-      } catch {}
-
-      // Popüler Türk Gazete ve Medya domain eşleştirmesi
-      const sLower = (source || '').toLowerCase();
-      if (sLower.includes('hürriyet') || sLower.includes('hurriyet')) domain = 'hurriyet.com.tr';
-      else if (sLower.includes('sözcü') || sLower.includes('sozcu')) domain = 'sozcu.com.tr';
-      else if (sLower.includes('ntv')) domain = 'ntv.com.tr';
-      else if (sLower.includes('habertürk') || sLower.includes('haberturk')) domain = 'haberturk.com';
-      else if (sLower.includes('milliyet')) domain = 'milliyet.com.tr';
-      else if (sLower.includes('cumhuriyet')) domain = 'cumhuriyet.com.tr';
-      else if (sLower.includes('sabah')) domain = 'sabah.com.tr';
-      else if (sLower.includes('trt')) domain = 'trthaber.com';
-      else if (sLower.includes('anadolu ajans') || sLower.includes('aa.com')) domain = 'aa.com.tr';
-      else if (sLower.includes('webrazzi')) domain = 'webrazzi.com';
-      else if (sLower.includes('shiftdelete')) domain = 'shiftdelete.net';
-      else if (sLower.includes('donanım') || sLower.includes('donanimhaber')) domain = 'donanimhaber.com';
-      else if (sLower.includes('webtekno')) domain = 'webtekno.com';
-      else if (sLower.includes('ensonhaber')) domain = 'ensonhaber.com';
-      else if (sLower.includes('mynet')) domain = 'mynet.com';
-      else if (sLower.includes('t24')) domain = 't24.com.tr';
-      else if (sLower.includes('diken')) domain = 'diken.com.tr';
-      else if (sLower.includes('gazete duvar')) domain = 'gazeteduvar.com.tr';
-      else if (sLower.includes('bloomberg')) domain = 'bloomberght.com';
-      else if (sLower.includes('ekonomi') || sLower.includes('ekonomim')) domain = 'ekonomim.com';
-      else if (sLower.includes('bigpara')) domain = 'bigpara.hurriyet.com.tr';
-      else if (sLower.includes('cnn türk') || sLower.includes('cnnturk')) domain = 'cnnturk.com';
-      else if (sLower.includes('a haber') || sLower.includes('ahaber')) domain = 'ahaber.com.tr';
-
-      if (!domain && source) {
-        domain = source.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com.tr';
-      }
-
-      // Title temizliği (Sondaki gazete adını kaldır)
-      let cleanTitle = title.replace(/\s*-\s*[^-]+$/, '').trim() || title;
-
-      // Göreli zaman hesabı (Türkçe)
-      let timeAgo = 'Az önce';
-      if (pubDate) {
-        const diffMs = Date.now() - new Date(pubDate).getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        if (diffMins < 60) {
-          timeAgo = `${Math.max(1, diffMins)} dakika önce`;
-        } else {
-          const diffHours = Math.floor(diffMins / 60);
-          if (diffHours < 24) {
-            timeAgo = `${diffHours} saat önce`;
-          } else {
-            const diffDays = Math.floor(diffHours / 24);
-            timeAgo = `${diffDays} gün önce`;
-          }
-        }
-      }
-
-      // Snippet temizliği (HTML etiketlerini ve RSS entity'lerini temizle)
-      let cleanSnippet = desc
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&amp;/g, '&')
-        .replace(/<[^>]+>/g, '')
-        .replace(/&[^;]+;/g, ' ')
-        .replace(new RegExp(source, 'gi'), '')
-        .trim();
-
-      if (!cleanSnippet || cleanSnippet.length < 15 || cleanSnippet.toLowerCase() === cleanTitle.toLowerCase()) {
-        cleanSnippet = `${source || 'Doğrulanmış Türk Basını'} tarafından aktarılan son dakika gelişmesi: ${cleanTitle}. Detaylar ve canlı gelişmeler takip ediliyor.`;
-      }
-
-      return {
-        id: `news_${idx}_${Date.now()}`,
-        title: cleanTitle,
-        fullTitle: title,
-        url: link,
-        link: link,
-        pubDate,
-        time: timeAgo,
-        timeAgo,
-        source: source || 'Türkiye Basını',
-        domain: domain || 'haber.com.tr',
-        sourceDomain: domain || 'hurriyet.com.tr',
-        snippet: cleanSnippet
-      };
-    });
-
-    res.json({
-      success: true,
-      count: items.length,
-      query,
-      news: items
-    });
-  } catch (err) {
-    console.error('Haber RSS hatası:', err);
-    res.status(500).json({ success: false, error: err.message, news: [] });
-  }
-});
-
 // 2.5 YouTube SponsorBlock API Proxy (0 TL - Ücretsiz Public API)
 app.get('/api/sponsorblock', async (req, res) => {
   const videoId = req.query.videoId;
@@ -1603,12 +1476,13 @@ app.post('/api/crawl', crawlLimiter, requireAdminKey, async (req, res) => {
 
 // 5. Canlı Küresel Web Arama (Akıllı SQLite Önbellek + DuckDuckGo Live HTML - 0 TL)
 // DuckDuckGo Canlı HTML Arama (yalnızca bir kaynak - kendi indeksimiz DEĞİL)
-async function fetchDdgResults(query) {
+async function fetchDdgResults(query, when = '') {
   try {
-    const url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query);
+    const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[when] || '';
+    const url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query) + (df ? '&df=' + df : '');
     const ddgRes = await fetch(url, {
       method: 'POST',
-      body: 'q=' + encodeURIComponent(query),
+      body: 'q=' + encodeURIComponent(query) + (df ? '&df=' + df : ''),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
@@ -1695,9 +1569,10 @@ function indexDdgResultsIntoOwnDb(ddgResults) {
 app.get('/api/live-web-search', async (req, res) => {
   const query = req.query.q || '';
   if (!query.trim()) return res.json({ success: true, results: [] });
+  const when = ['day', 'week', 'month', 'year'].includes(String(req.query.when)) ? String(req.query.when) : '';
 
-  // 1. ADIM: SQLite Akıllı Önbellek Kontrolü (Tier 1 - 1ms, 0 TL)
-  const cachedResults = getCachedQuery(query);
+  // 1. ADIM: SQLite Akıllı Önbellek Kontrolü (Tier 1 - 1ms, 0 TL) — zaman filtresi varsa atlanır
+  const cachedResults = when ? null : getCachedQuery(query);
   if (cachedResults && cachedResults.length > 0) {
     return res.json({
       success: true,
@@ -1711,8 +1586,8 @@ app.get('/api/live-web-search', async (req, res) => {
 
   // 2. ADIM: Kendi indeksimiz ve canlı DuckDuckGo aramasını PARALEL çalıştır
   const [ownIndexSettled, ddgSettled] = await Promise.allSettled([
-    Promise.resolve(safeSearchLocal(query)),
-    fetchDdgResults(query)
+    Promise.resolve(when ? [] : safeSearchLocal(query)),
+    fetchDdgResults(query, when)
   ]);
 
   const ownIndexRows = ownIndexSettled.status === 'fulfilled' ? ownIndexSettled.value : [];
@@ -1751,10 +1626,10 @@ app.get('/api/live-web-search', async (req, res) => {
     deduped.push(item);
   }
 
-  const finalResults = deduped.slice(0, 12);
+  const finalResults = deduped.slice(0, 20);
 
   // 4. ADIM: "Write-on-Read" (Okurken Kaydet) - Otomatik Olarak SQLite'a Ekle
-  if (finalResults.length > 0) {
+  if (finalResults.length > 0 && !when) {
     saveCachedQuery(query, finalResults);
   }
 
@@ -1794,57 +1669,6 @@ app.post('/api/crawl/rss-news', crawlLimiter, requireAdminKey, async (req, res) 
     res.json({ success: true, totalInserted, feeds: results });
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-// 6. Canlı Küresel Görsel Arama Proxy (DuckDuckGo Live Images - 0 TL & Sınırsız Görsel)
-app.get('/api/live-images', async (req, res) => {
-  const query = req.query.q || '';
-  if (!query.trim()) return res.json({ success: true, results: [] });
-
-  try {
-    const vqdRes = await fetch('https://duckduckgo.com/?q=' + encodeURIComponent(query), {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-    });
-    const html = await vqdRes.text();
-    const vqdMatch = html.match(/vqd=(["']?)([\d-]+)\1/) || html.match(/vqd=([\d-]+)/);
-    const vqd = vqdMatch ? (vqdMatch[2] || vqdMatch[1]) : null;
-
-    if (!vqd) return res.json({ success: false, results: [] });
-
-    const imgUrl = `https://duckduckgo.com/i.js?l=tr-tr&o=json&q=${encodeURIComponent(query)}&vqd=${vqd}&f=,,,;&p=1`;
-    const imgRes = await fetch(imgUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://duckduckgo.com/'
-      }
-    });
-
-    if (!imgRes.ok) return res.json({ success: false, results: [] });
-    const data = await imgRes.json();
-    const rawResults = data.results || [];
-
-    const results = rawResults.slice(0, 64).map((r, i) => {
-      let sourceHost = 'Canlı Web';
-      try {
-        if (r.url) sourceHost = new URL(r.url).hostname;
-      } catch {}
-
-      return {
-        id: `img_${i}_${Date.now()}`,
-        title: r.title || query,
-        thumb: r.thumbnail || r.image,
-        fullImage: r.image,
-        width: r.width,
-        height: r.height,
-        source: sourceHost,
-        sourceUrl: r.url
-      };
-    });
-
-    res.json({ success: true, count: results.length, results });
-  } catch (err) {
-    res.json({ success: false, results: [] });
   }
 });
 
