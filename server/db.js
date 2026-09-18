@@ -249,14 +249,25 @@ function initFullTextIndex() {
       END;
     `);
 
-    // Mevcut sayfalar indekste yoksa (ilk kurulum veya sonradan eklenen FTS) doldur
-    const pageCount = db.prepare('SELECT COUNT(*) as count FROM pages').get().count;
-    const ftsCount = db.prepare('SELECT COUNT(*) as count FROM pages_fts').get().count;
+    // Mevcut sayfaların indekste olduğundan emin ol.
+    // DİKKAT: dış-içerikli (content='pages') FTS5 tablosunda `SELECT COUNT(*) FROM pages_fts`
+    // asıl tabloya yönlenir ve indeks bomboşken bile sayfa sayısını döndürür — doluluk
+    // kontrolü için KULLANILAMAZ. FTS5'in integrity-check'i de boş indeksi hata saymıyor.
+    // Bu yüzden kendi meta kaydımızı tutuyoruz: en son hangi sayfa sayısıyla indeks kuruldu.
+    db.exec(`CREATE TABLE IF NOT EXISTS fts_meta (key TEXT PRIMARY KEY, value TEXT)`);
 
-    if (pageCount > 0 && ftsCount < pageCount) {
+    const pageCount = db.prepare('SELECT COUNT(*) as count FROM pages').get().count;
+    const marker = db.prepare("SELECT value FROM fts_meta WHERE key = 'indexed_pages'").get();
+
+    // Marker yoksa indeks hiç doldurulmamıştır. Sayfa sayısı marker'ın çok altına/üstüne
+    // kaydıysa (ör. veritabanı yedekten geri yüklendi) indeksi tazeliyoruz.
+    const lastIndexed = marker ? parseInt(marker.value, 10) : -1;
+    const needsRebuild = pageCount > 0 && (lastIndexed < 0 || Math.abs(pageCount - lastIndexed) > pageCount * 0.5);
+
+    if (needsRebuild) {
       db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
-      const after = db.prepare('SELECT COUNT(*) as count FROM pages_fts').get().count;
-      console.log(`[NovaTurk FTS] Ters indeks yeniden kuruldu: ${after} sayfa indekslendi.`);
+      db.prepare("INSERT OR REPLACE INTO fts_meta (key, value) VALUES ('indexed_pages', ?)").run(String(pageCount));
+      console.log(`[NovaTurk FTS] Ters indeks kuruldu: ${pageCount} sayfa indekslendi.`);
     }
 
     ftsAvailable = true;
