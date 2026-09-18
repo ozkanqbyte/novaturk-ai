@@ -1317,11 +1317,32 @@ app.get('/api/search', (req, res) => {
 
 // 3.4 Tıklama kaydı — sıralamanın kullanıcı davranışından öğrenmesini sağlar.
 // Herkese açık (genel rate limit uygulanır), kimlik/IP saklanmaz.
+// Tıklama manipülasyonu koruması: aynı kişi aynı sorguda aynı sonuca günde yalnızca
+// bir kez sayılır. IP kaydedilmez — sadece bellekte, günlük tuzla karıştırılmış bir
+// özet tutulur ve gün değişince tamamen silinir.
+const clickDedup = { day: '', salt: '', seen: new Set() };
+function isDuplicateClick(req, query, url) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (clickDedup.day !== today) {
+    clickDedup.day = today;
+    clickDedup.salt = crypto.randomBytes(16).toString('hex');
+    clickDedup.seen = new Set();
+  }
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+  const key = crypto.createHash('sha256').update(clickDedup.salt + ip + '|' + query.toLowerCase() + '|' + url).digest('hex');
+  if (clickDedup.seen.has(key)) return true;
+  clickDedup.seen.add(key);
+  return false;
+}
+
 app.post('/api/click', (req, res) => {
   const { query, url, position } = req.body || {};
   if (!query || !url) return res.status(400).json({ success: false, error: 'query ve url gerekli' });
-  const ok = logResultClick(String(query).slice(0, 300), String(url).slice(0, 2000), Number(position));
-  res.json({ success: ok });
+  const cleanQuery = String(query).slice(0, 300);
+  const cleanUrl = String(url).slice(0, 2000);
+  if (isDuplicateClick(req, cleanQuery, cleanUrl)) return res.json({ success: true, counted: false });
+  const ok = logResultClick(cleanQuery, cleanUrl, Number(position));
+  res.json({ success: ok, counted: ok });
 });
 
 // 3.5 Autocomplete — yazarken öneri

@@ -686,11 +686,12 @@ export function searchLocalDb(query) {
         try {
           db.prepare(`
             SELECT url,
-                   SUM(CASE WHEN query = ? THEN 3 ELSE 1 END) as weight
+                   SUM(CASE WHEN query = ? THEN 3 ELSE 1 END) as weight,
+                   COUNT(*) as clicks
             FROM click_logs
             WHERE query = ? OR url IN (SELECT url FROM click_logs WHERE query = ?)
             GROUP BY url
-          `).all(cleanQ, cleanQ, cleanQ).forEach(r => clickBoosts.set(r.url, r.weight));
+          `).all(cleanQ, cleanQ, cleanQ).forEach(r => clickBoosts.set(r.url, r));
         } catch {
           // tıklama verisi okunamazsa sıralama yine de BM25 ile çalışsın
         }
@@ -701,12 +702,13 @@ export function searchLocalDb(query) {
             const base = (-(row.bm25_score || 0)) * 10 + (row.authority_score || 50) / 10;
             // Tıklama bonusu logaritmik: tek tık büyük fark yaratmasın, çok tıklanan
             // sonuç da sınırsız avantaj kazanmasın.
-            const clicks = clickBoosts.get(row.url) || 0;
-            const clickBonus = clicks > 0 ? Math.log2(1 + clicks) * 12 : 0;
+            const clickStat = clickBoosts.get(row.url);
+            const weight = clickStat?.weight || 0;
+            const clickBonus = weight > 0 ? Math.log2(1 + weight) * 12 : 0;
             const { bm25_score, ...rest } = row;
             return {
               ...rest,
-              clickCount: clicks,
+              clickCount: clickStat?.clicks || 0,
               relevanceScore: Number((base + clickBonus).toFixed(2))
             };
           })
