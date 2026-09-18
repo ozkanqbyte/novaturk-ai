@@ -23,6 +23,8 @@ import SponsoredShowcase from './components/SponsoredShowcase';
 import DynamicIsland from './components/DynamicIsland';
 import DealHunterWidget from './components/DealHunterWidget';
 import BusinessAdsModal from './components/BusinessAdsModal';
+import MobileBottomBar from './components/MobileBottomBar';
+import MobileTabsSheet from './components/MobileTabsSheet';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
   getBookmarks, addBookmark, removeBookmark, isBookmarked 
@@ -87,6 +89,40 @@ export default function App() {
     results: null,
     hasSearched: false,
     isLoading: false
+  };
+
+  // 📱 Mobil Sekme Kartları Bottom Sheet State'i
+  const [isMobileTabsOpen, setIsMobileTabsOpen] = useState(false);
+
+  // 🎵 Mobil Bar için Canlı Medya Dinleyicisi
+  const [mediaState, setMediaState] = useState(null);
+
+  useEffect(() => {
+    const handleMediaUpdate = (e) => {
+      if (e.detail) {
+        setMediaState(e.detail);
+      }
+    };
+    window.addEventListener('novaturk:media-status-update', handleMediaUpdate);
+    return () => window.removeEventListener('novaturk:media-status-update', handleMediaUpdate);
+  }, []);
+
+  const activeMediaTab = tabs.find(t => 
+    t.type === 'web' && 
+    (t.url?.includes('youtube.com') || t.url?.includes('youtu.be') || t.url?.includes('spotify') || t.title?.toLowerCase().includes('youtube'))
+  );
+
+  const handleToggleMediaPlay = () => {
+    const targetTabId = mediaState?.tabId || activeMediaTab?.id;
+    if (targetTabId) {
+      window.dispatchEvent(new CustomEvent('novaturk:media-command', {
+        detail: { tabId: targetTabId, action: 'toggle' }
+      }));
+    }
+  };
+
+  const handleExpandIsland = () => {
+    window.dispatchEvent(new CustomEvent('novaturk:expand-island'));
   };
 
   // 10 Cam & Gradient Teması State'i
@@ -713,7 +749,7 @@ const isElectronApp = () => {
           return (
             <div
               key={webTab.id}
-              className={`w-full h-full absolute inset-0 ${isThisActive ? 'z-20' : 'z-0 pointer-events-none'}`}
+              className={`w-full h-full absolute inset-0 pb-[calc(60px+env(safe-area-inset-bottom,0px))] md:pb-0 ${isThisActive ? 'z-20' : 'z-0 pointer-events-none'}`}
               style={{
                 visibility: isThisActive ? 'visible' : 'hidden',
               }}
@@ -754,7 +790,7 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME ANA SAYFASI)     */
           /* ============================================================ */
-          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col justify-between">
+          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col justify-between pb-24 md:pb-0">
             <div className="w-full max-w-4xl mx-auto px-4 py-8 sm:py-12 flex flex-col items-center text-center animate-fadeIn my-auto">
               
               {/* 🌟 GOOGLE TARZI ÇOK RENKLİ VE İNTERAKTİF NOVATÜRK LOGOSU & İSMİ */}
@@ -939,7 +975,7 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* SEARCH RESULTS VIEW (FULL SCREEN SCROLLABLE)                 */
           /* ============================================================ */
-          <div className="w-full h-full flex-1 overflow-y-auto flex flex-col">
+          <div className="w-full h-full flex-1 overflow-y-auto flex flex-col pb-24 md:pb-0">
             {/* Sticky Floating Glass Search Header */}
             <div 
               style={{
@@ -1140,6 +1176,40 @@ const isElectronApp = () => {
       <BusinessAdsModal 
         isOpen={isBusinessModalOpen}
         onClose={() => setIsBusinessModalOpen(false)}
+        isDark={isDark}
+        currentTheme={currentTheme}
+      />
+
+      {/* 📱 APPLE & GOOGLE HİBRİT MOBİL ALT KONTROL DOCK'U */}
+      <MobileBottomBar 
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onHomeClick={handleHomeClick}
+        onNewTab={handleNewTab}
+        onOpenTabsSheet={() => setIsMobileTabsOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenThemeSelector={() => setIsThemeModalOpen(true)}
+        onOpenVpnModal={() => { setVpnState(getVpnState()); setIsVpnOpen(true); }}
+        onOpenAdmin={() => setIsAdminOpen(true)}
+        isDark={isDark}
+        setIsDark={setIsDark}
+        currentTheme={currentTheme}
+        activeMediaTab={activeMediaTab}
+        mediaState={mediaState}
+        onToggleMediaPlay={handleToggleMediaPlay}
+        onExpandIsland={handleExpandIsland}
+      />
+
+      {/* 📑 MOBİL SEKME YÖNETİCİSİ (APPLE BOTTOM SHEET CARD GRID) */}
+      <MobileTabsSheet 
+        isOpen={isMobileTabsOpen}
+        onClose={() => setIsMobileTabsOpen(false)}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={(id) => setActiveTabId(id)}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        onNewIncognitoTab={handleNewIncognitoTab}
         isDark={isDark}
         currentTheme={currentTheme}
       />

@@ -27,7 +27,7 @@ export default function BrowserTabBar({
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
   return (
-    <div className={`w-full border-b select-none transition-all duration-300 z-30 shrink-0 backdrop-blur-2xl ${
+    <div className={`hidden md:block w-full border-b select-none transition-all duration-300 z-30 shrink-0 backdrop-blur-2xl ${
       isDark 
         ? 'bg-[#06080d]/80 border-white/[0.08] shadow-[0_4px_30px_rgba(0,0,0,0.5)]' 
         : 'bg-white/75 border-black/[0.08] shadow-[0_4px_25px_rgba(0,0,0,0.06)]'

@@ -176,8 +176,16 @@ export default function DynamicIsland({
         setMediaState(e.detail);
       }
     };
+    const handleExpandReq = () => {
+      setIsExpanded(true);
+      setIsHidden(false);
+    };
     window.addEventListener('novaturk:media-status-update', handleMediaUpdate);
-    return () => window.removeEventListener('novaturk:media-status-update', handleMediaUpdate);
+    window.addEventListener('novaturk:expand-island', handleExpandReq);
+    return () => {
+      window.removeEventListener('novaturk:media-status-update', handleMediaUpdate);
+      window.removeEventListener('novaturk:expand-island', handleExpandReq);
+    };
   }, []);
 
   const formatTime = (seconds) => {
@@ -310,8 +318,13 @@ export default function DynamicIsland({
     );
   }
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const stylePos = position.x === null 
-    ? { top: `${position.y}px`, left: '50%', transform: 'translateX(-50%)' }
+    ? { 
+        top: isMobile ? 'calc(10px + env(safe-area-inset-top, 0px))' : `${position.y}px`, 
+        left: '50%', 
+        transform: 'translateX(-50%)' 
+      }
     : { top: `${position.y}px`, left: `${position.x}px` };
 
   return (
