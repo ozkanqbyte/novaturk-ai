@@ -879,6 +879,7 @@ const isElectronApp = () => {
                   setIsDeepSearch={setIsDeepSearch}
                   isDark={isDark}
                   currentTheme={currentTheme}
+                  autoFocus={activeTab.isNewTab}
                 />
               </div>
 

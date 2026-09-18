@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Image as ImageIcon, Upload } from 'lucide-react';
 import { sound } from '../services/soundService';
 
-export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme }) {
+export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme, autoFocus = false }) {
   const [query, setQuery] = useState(defaultQuery);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
@@ -20,6 +20,15 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
   useEffect(() => {
     setQuery(defaultQuery);
   }, [defaultQuery]);
+
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K or '/'
   useEffect(() => {
