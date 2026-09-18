@@ -63,6 +63,24 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   const halkNeDiyor = results?.halkNeDiyor;
   const query = results?.query || '';
 
+  // 🔁 Tıklanan sonucu sunucuya bildir — sıralama bundan öğrenir.
+  // Kimlik/IP gönderilmez, yalnızca (sorgu, url, sıra) kaydedilir.
+  const reportResultClick = (result, position) => {
+    if (!query || !result?.link) return;
+    try {
+      const payload = JSON.stringify({ query, url: result.link, position });
+      const endpoint = `${API_BASE}/api/click`;
+      // sendBeacon: sayfa değişse bile isteğin gitmesini garantiler
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }));
+      } else {
+        fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+      }
+    } catch {
+      // tıklama kaydı başarısız olsa bile kullanıcının sonucu açması engellenmemeli
+    }
+  };
+
   // "Bunu mu demek istediniz?" — sunucudan yazım önerisini al
   const [didYouMean, setDidYouMean] = useState(null);
   useEffect(() => {
@@ -1028,7 +1046,12 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
 
                     <h4 className="text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug">
                       <button
-                        onClick={() => onOpenInAppTab ? onOpenInAppTab({ ...result, title: cleanTitle, snippet: cleanSnippet }) : window.open(result.link, '_blank')}
+                        onClick={() => {
+                          reportResultClick(result, idx + 1);
+                          return onOpenInAppTab
+                            ? onOpenInAppTab({ ...result, title: cleanTitle, snippet: cleanSnippet })
+                            : window.open(result.link, '_blank');
+                        }}
                         className="hover:underline text-left transition-all inline-flex items-baseline gap-1.5"
                         style={{ color: isDark ? '#38bdf8' : '#0369a1' }}
                       >

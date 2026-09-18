@@ -196,6 +196,17 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Kullanıcı davranışından öğrenme: hangi sorguda hangi sonuca tıklandı?
+    CREATE TABLE IF NOT EXISTS click_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      query TEXT NOT NULL,
+      url TEXT NOT NULL,
+      position INTEGER,
+      clicked_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_click_query ON click_logs(query);
+    CREATE INDEX IF NOT EXISTS idx_click_url ON click_logs(url);
+
     CREATE TABLE IF NOT EXISTS rss_sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       url TEXT UNIQUE NOT NULL,
@@ -506,6 +517,43 @@ export function getSuggestions(prefix, limit = 8) {
   }
 }
 
+// Bir arama sonucuna tıklandığında kaydet — sıralama bundan öğrenir.
+export function logResultClick(query, url, position) {
+  try {
+    const cleanQuery = (query || '').trim().toLowerCase();
+    if (!cleanQuery || !url) return false;
+    db.prepare('INSERT INTO click_logs (query, url, position) VALUES (?, ?, ?)')
+      .run(cleanQuery, url, Number.isInteger(position) ? position : null);
+    return true;
+  } catch (err) {
+    console.warn('[NovaTurk Tıklama] Kayıt hatası:', err.message);
+    return false;
+  }
+}
+
+// Admin paneli için: hangi sorguda hangi sonuç ne kadar tıklanıyor
+export function getClickAnalytics(limit = 20) {
+  try {
+    return {
+      topClicked: db.prepare(`
+        SELECT query, url, COUNT(*) as clicks, MAX(clicked_at) as last_click
+        FROM click_logs GROUP BY query, url ORDER BY clicks DESC LIMIT ?
+      `).all(limit),
+      totalClicks: db.prepare('SELECT COUNT(*) as count FROM click_logs').get().count,
+      // Sonuç gösterilip hiç tıklanmayan sorgular = kalitesiz sonuç sinyali
+      unclickedQueries: db.prepare(`
+        SELECT s.query, COUNT(*) as searches
+        FROM search_logs s
+        WHERE s.results_count > 0
+          AND NOT EXISTS (SELECT 1 FROM click_logs c WHERE c.query = lower(s.query))
+        GROUP BY lower(s.query) ORDER BY searches DESC LIMIT ?
+      `).all(limit)
+    };
+  } catch (err) {
+    return { topClicked: [], totalClicks: 0, unclickedQueries: [], error: err.message };
+  }
+}
+
 export function logAdminAction(action, target, detail) {
   try {
     db.prepare('INSERT INTO admin_audit_log (action, target, detail) VALUES (?, ?, ?)').run(
@@ -632,12 +680,35 @@ export function searchLocalDb(query) {
           LIMIT 40
         `).all(matchExpr);
 
+        // 🔁 Kullanıcı davranışından öğrenme: bu sorguda daha önce tıklanan sonuçlar
+        // yukarı çıkar. Arama motorlarının kalitesini zamanla artıran asıl döngü budur.
+        const clickBoosts = new Map();
+        try {
+          db.prepare(`
+            SELECT url,
+                   SUM(CASE WHEN query = ? THEN 3 ELSE 1 END) as weight
+            FROM click_logs
+            WHERE query = ? OR url IN (SELECT url FROM click_logs WHERE query = ?)
+            GROUP BY url
+          `).all(cleanQ, cleanQ, cleanQ).forEach(r => clickBoosts.set(r.url, r.weight));
+        } catch {
+          // tıklama verisi okunamazsa sıralama yine de BM25 ile çalışsın
+        }
+
         return ftsRows
           .map(row => {
             // BM25'i pozitif bir alaka puanına çevir, otorite bonusunu ekle
-            const relevance = (-(row.bm25_score || 0)) * 10 + (row.authority_score || 50) / 10;
+            const base = (-(row.bm25_score || 0)) * 10 + (row.authority_score || 50) / 10;
+            // Tıklama bonusu logaritmik: tek tık büyük fark yaratmasın, çok tıklanan
+            // sonuç da sınırsız avantaj kazanmasın.
+            const clicks = clickBoosts.get(row.url) || 0;
+            const clickBonus = clicks > 0 ? Math.log2(1 + clicks) * 12 : 0;
             const { bm25_score, ...rest } = row;
-            return { ...rest, relevanceScore: Number(relevance.toFixed(2)) };
+            return {
+              ...rest,
+              clickCount: clicks,
+              relevanceScore: Number((base + clickBonus).toFixed(2))
+            };
           })
           .sort((a, b) => b.relevanceScore - a.relevanceScore)
           .slice(0, 20);

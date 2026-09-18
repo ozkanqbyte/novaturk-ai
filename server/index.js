@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import dns from 'dns/promises';
 import { rateLimit } from 'express-rate-limit';
-import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase, getSuggestions, suggestSpellingCorrection, rebuildSearchVocabulary } from './db.js';
+import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase, logResultClick, getClickAnalytics, getSuggestions, suggestSpellingCorrection, rebuildSearchVocabulary } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
 
@@ -305,6 +305,7 @@ app.get('/api/admin/overview', requireAdminKey, (req, res) => {
         hourlyVolume
       },
       topSites,
+      clickAnalytics: getClickAnalytics(15),
       moderation: {
         blockedDomains,
         rssSources,
@@ -630,6 +631,7 @@ app.get('/admin', (req, res) => {
     <button class="tab-btn" data-tab="rss">📰 RSS Kaynakları</button>
     <button class="tab-btn" data-tab="blocked">🚫 Yasaklı Domainler</button>
     <button class="tab-btn" data-tab="complaints">⚠️ Şikayetler</button>
+    <button class="tab-btn" data-tab="learning">🔁 Öğrenme</button>
     <button class="tab-btn" data-tab="audit">🧾 Audit Log</button>
   </div>
 
@@ -821,6 +823,24 @@ app.get('/admin', (req, res) => {
           <section>
             <h2>Herkese Açık Şikayet Formu</h2>
             <div class="panel-box"><code>POST /api/report { url, reason, detail }</code> — kimlik doğrulaması gerektirmez, herkes gönderebilir.</div>
+          </section>
+        </div>
+
+        <div id="tab-learning" class="tab-panel">
+          <div class="grid">
+            <div class="card"><div class="label">Toplam Tıklama</div><div class="value">\${d.clickAnalytics?.totalClicks ?? 0}</div></div>
+            <div class="card"><div class="label">Öğrenilen Sorgu-Sonuç</div><div class="value">\${(d.clickAnalytics?.topClicked || []).length}</div></div>
+          </div>
+          <section>
+            <h2>En Çok Tıklanan Sonuçlar (sıralamayı bunlar yükseltir)</h2>
+            <div class="panel-box"><table><thead><tr><th>Sorgu</th><th>Tıklanan Sonuç</th><th>Tıklama</th><th>Son</th></tr></thead>
+            <tbody>\${rows(d.clickAnalytics?.topClicked, ['query','url','clicks','last_click'])}</tbody></table></div>
+          </section>
+          <section>
+            <h2>⚠️ Sonuç Gösterilen Ama Hiç Tıklanmayan Sorgular</h2>
+            <p style="color:#64748b;font-size:12px;margin-bottom:10px">Bu sorgularda sonuç dönüyor ama kullanıcı hiçbirini açmıyor — sonuç kalitesinin zayıf olduğunun en net işareti.</p>
+            <div class="panel-box"><table><thead><tr><th>Sorgu</th><th>Arama Sayısı</th></tr></thead>
+            <tbody>\${rows(d.clickAnalytics?.unclickedQueries, ['query','searches'])}</tbody></table></div>
           </section>
         </div>
 
@@ -1293,6 +1313,15 @@ app.get('/api/search', (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// 3.4 Tıklama kaydı — sıralamanın kullanıcı davranışından öğrenmesini sağlar.
+// Herkese açık (genel rate limit uygulanır), kimlik/IP saklanmaz.
+app.post('/api/click', (req, res) => {
+  const { query, url, position } = req.body || {};
+  if (!query || !url) return res.status(400).json({ success: false, error: 'query ve url gerekli' });
+  const ok = logResultClick(String(query).slice(0, 300), String(url).slice(0, 2000), Number(position));
+  res.json({ success: ok });
 });
 
 // 3.5 Autocomplete — yazarken öneri
