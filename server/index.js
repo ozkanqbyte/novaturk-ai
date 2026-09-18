@@ -876,7 +876,18 @@ app.get('/auth/google/start', (req, res) => {
 </html>`);
 });
 
-// 🚀 Üretim Ortamında (Render vb.) Frontend'i (SPA) Otomatik Dağıt
+// 🚀 Üretim Ortamında (Render vb.) Tarayıcı Girişlerini Resmî Vercel Arayüzüne Yönlendir
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase();
+  const isRenderHost = host.includes('onrender.com') || !!process.env.RENDER;
+  if (isRenderHost && req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/assets/')) {
+    if (req.headers.accept && req.headers.accept.includes('text/html')) {
+      return res.redirect(302, 'https://novaturk-engine.vercel.app' + (req.url === '/' ? '' : req.url));
+    }
+  }
+  next();
+});
+
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
   app.use((req, res, next) => {
