@@ -3,6 +3,9 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
+import dns from 'dns/promises';
+import { rateLimit } from 'express-rate-limit';
 import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId } from './crawler.js';
 import { ingestAllNewsFeeds } from './rssFeeds.js';
@@ -17,8 +20,100 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// ⚠️ Genel istek sınırlama (rate limiting) — önceden HİÇ yoktu, herkes sınırsız istek atabiliyordu.
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Çok fazla istek gönderildi, lütfen biraz sonra tekrar deneyin.' }
+});
+app.use('/api/', generalLimiter);
+
+// Crawl/admin uç noktaları için daha sıkı bir limit + zorunlu anahtar (aşağıda requireAdminKey)
+const crawlLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Tarama isteği limiti aşıldı.' }
+});
+
+// 🔐 Admin/crawl uç noktaları önceden HİÇ kimlik doğrulaması istemiyordu — herkes tetikleyebiliyordu.
+// ADMIN_API_KEY env var ile ayarlanmazsa, süreç her başladığında rastgele bir anahtar üretilip
+// loga yazılır (SSH ile sunucuya bağlanan kişi bunu görüp kullanabilir).
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY || crypto.randomBytes(24).toString('hex');
+if (!process.env.ADMIN_API_KEY) {
+  console.log(`[NovaTurk Güvenlik] ADMIN_API_KEY tanımlanmamış — bu oturum için otomatik üretildi: ${ADMIN_API_KEY}`);
+  console.log('[NovaTurk Güvenlik] Kalıcı olması için bunu ortam değişkeni (env var) olarak ayarlayın.');
+}
+
+function requireAdminKey(req, res, next) {
+  const provided = req.headers['x-admin-key'];
+  if (provided && provided === ADMIN_API_KEY) return next();
+  return res.status(401).json({ success: false, error: 'Yetkisiz: geçerli x-admin-key başlığı gerekli.' });
+}
+
+// 🛡️ SSRF Koruması: crawl endpoint'leri önceden herhangi bir URL'i (iç ağ, localhost, bulut metadata
+// adresleri dahil) sunucu üzerinden fetch etmeye izin veriyordu. Artık sadece genel/public IP'lere
+// çözülen http(s) adreslerine izin veriliyor.
+const BLOCKED_HOSTNAMES = new Set(['localhost', '0.0.0.0', '::1']);
+function isPrivateIp(ip) {
+  if (ip.includes(':')) {
+    // IPv6: yerel/link-local/unique-local aralıklarını engelle
+    return ip === '::1' || ip.startsWith('fe80:') || ip.startsWith('fc') || ip.startsWith('fd');
+  }
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(Number.isNaN)) return true;
+  const [a, b] = parts;
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 169 && b === 254) return true; // link-local / bulut metadata (169.254.169.254 dahil)
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 0) return true;
+  return false;
+}
+async function assertSafeCrawlUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('Geçersiz URL');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Sadece http/https protokolüne izin verilir');
+  }
+  if (BLOCKED_HOSTNAMES.has(parsed.hostname.toLowerCase())) {
+    throw new Error('Bu adrese izin verilmiyor');
+  }
+  const records = await dns.lookup(parsed.hostname, { all: true }).catch(() => []);
+  if (records.length === 0) {
+    throw new Error('Hostname çözümlenemedi');
+  }
+  if (records.some(r => isPrivateIp(r.address))) {
+    throw new Error('İç ağ/özel IP adreslerine tarama izni yok');
+  }
+  return parsed;
+}
+
 // Veritabanını başlat
 initDatabase();
+
+// 🧹 Veri saklama politikası: arama sorgusu logları süresiz saklanmıyor, 30 günden eskisi otomatik silinir.
+const LOG_RETENTION_DAYS = 30;
+function cleanupOldSearchLogs() {
+  try {
+    const result = db.prepare(`DELETE FROM search_logs WHERE searched_at < datetime('now', '-${LOG_RETENTION_DAYS} days')`).run();
+    if (result.changes > 0) {
+      console.log(`[NovaTurk Veri Saklama] ${result.changes} adet ${LOG_RETENTION_DAYS} günden eski arama logu silindi.`);
+    }
+  } catch (err) {
+    console.warn('[NovaTurk Veri Saklama] Temizlik hatası:', err.message);
+  }
+}
+cleanupOldSearchLogs();
+setInterval(cleanupOldSearchLogs, 24 * 60 * 60 * 1000); // günde bir kere
 
 // 🔄 Otomatik Haber Taraması: Kendi indeksimiz kimse tetiklemeden, kendi kendine büyüsün
 // (DuckDuckGo'ya bağımlılığı azaltmanın asıl yolu budur — cache sadece TEKRARLANAN sorularda işe yarar,
@@ -110,7 +205,7 @@ app.get('/api/cache/stats', (req, res) => {
 });
 
 // 🕷️ Otonom Link Keşifli Derin Tarama Tetikleyicisi
-app.post('/api/crawl/batch-discover', async (req, res) => {
+app.post('/api/crawl/batch-discover', crawlLimiter, requireAdminKey, async (req, res) => {
   try {
     const { maxPages = 50, concurrency = 3 } = req.body || {};
     
@@ -521,10 +616,16 @@ app.get('/api/search', (req, res) => {
 });
 
 // 4. Canlı Crawler Tetikleme
-app.post('/api/crawl', async (req, res) => {
+app.post('/api/crawl', crawlLimiter, requireAdminKey, async (req, res) => {
   const { url, siteId } = req.body;
   if (!url) {
     return res.status(400).json({ error: 'URL gereklidir' });
+  }
+
+  try {
+    await assertSafeCrawlUrl(url); // SSRF koruması: iç ağ/özel IP adreslerine izin verilmez
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
   }
 
   const crawlResult = await crawlSite(url, siteId);
@@ -694,7 +795,7 @@ app.get('/api/live-web-search', async (req, res) => {
 });
 
 // Haber RSS Toplama Tetikleyicisi (0 TL, yasal syndication - kendi indeksi büyütür)
-app.post('/api/crawl/rss-news', async (req, res) => {
+app.post('/api/crawl/rss-news', crawlLimiter, requireAdminKey, async (req, res) => {
   try {
     const results = await ingestAllNewsFeeds();
     const totalInserted = results.reduce((sum, r) => sum + (r.inserted || 0), 0);
@@ -1382,6 +1483,56 @@ app.get(['/reset', '/clean', '/fix'], (req, res) => {
       window.location.replace('https://novaturk-engine.vercel.app');
     }, 1200);
   </script>
+</body>
+</html>`);
+});
+
+// Gizlilik ve Kullanım Şartları (kısa, dürüst özet — Vercel yönlendirmesinden ÖNCE tanımlanmalı)
+app.get('/gizlilik', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NovaTürk AI • Gizlilik ve Kullanım Şartları</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      background: #06080e; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif;
+      max-width: 720px; margin: 0 auto; padding: 40px 24px; line-height: 1.7;
+    }
+    h1 { color: #fff; font-size: 24px; }
+    h2 { color: #38bdf8; font-size: 16px; margin-top: 32px; }
+    p, li { color: #94a3b8; font-size: 14px; }
+    .updated { color: #64748b; font-size: 12px; margin-bottom: 24px; }
+    a { color: #38bdf8; }
+  </style>
+</head>
+<body>
+  <h1>NovaTürk AI — Gizlilik ve Kullanım Şartları</h1>
+  <p class="updated">Son güncelleme: ${new Date().toISOString().slice(0, 10)}</p>
+
+  <h2>Hangi verileri topluyoruz?</h2>
+  <ul>
+    <li>Arama sorgunuzun metnini, sonuç sayısını ve yanıt süresini (kişisel kimlik bilgisi olmadan) kısa süreliğine loglarız.</li>
+    <li>Kimlik bilgisi (IP, isim, e-posta) sunucu tarafında kalıcı olarak <strong>saklanmaz</strong>.</li>
+    <li>Bazı tercihler (tema, VPN/reklam engelleyici ayarları) yalnızca kendi tarayıcınızda (localStorage) tutulur, bize gönderilmez.</li>
+  </ul>
+
+  <h2>"Google ile Giriş" hakkında</h2>
+  <p>Google OAuth kimlik bilgileri (GOOGLE_CLIENT_ID/SECRET) yapılandırılmadığı sürece bu buton gerçek bir Google hesabına bağlanmaz;
+  yalnızca geçici, kişisel veri içermeyen bir "misafir" oturumu açar. Bu arayüzde açıkça belirtilir.</p>
+
+  <h2>VPN ve Reklam Engelleyici hakkında</h2>
+  <p>Uygulama içindeki VPN özelliği şu an için sınırlı/demo niteliğindedir ve gerçek bir şifreli tünel garantisi vermez.
+  Reklam engelleme, yalnızca masaüstü (Electron) uygulamasında bilinen reklam/takip alan adlarını engeller; web sürümünde aktif değildir.</p>
+
+  <h2>Üçüncü taraf kaynaklar</h2>
+  <p>Canlı arama sonuçlarının bir kısmı DuckDuckGo'nun herkese açık arama sayfasından, bir kısmı ise kendi indeksimizden
+  (RSS ve taranan Türk web siteleri) gelir. Sonuç kartlarında kaynağı görebilirsiniz.</p>
+
+  <h2>İletişim</h2>
+  <p>Sorularınız için: <a href="mailto:iletisim@novaturk-engine.com">iletisim@novaturk-engine.com</a> (yer tutucu adres — gerçek iletişim adresinizle değiştirin).</p>
 </body>
 </html>`);
 });
