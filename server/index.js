@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import dns from 'dns/promises';
 import { rateLimit } from 'express-rate-limit';
-import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase } from './db.js';
+import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase, getSuggestions, suggestSpellingCorrection, rebuildSearchVocabulary } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
 
@@ -1246,7 +1246,27 @@ app.get('/api/search', (req, res) => {
 
   const start = performance.now();
   try {
-    const results = searchLocalDb(query);
+    let results = searchLocalDb(query);
+
+    // "Bunu mu demek istediniz?" — sonuç az/yoksa yazım düzeltmesi dene.
+    // Düzeltilmiş sorgu belirgin şekilde daha iyi sonuç veriyorsa onu da döndür.
+    let didYouMean = null;
+    let correctedResults = null;
+    if (results.length < 3) {
+      const suggestion = suggestSpellingCorrection(query);
+      if (suggestion) {
+        const alternative = searchLocalDb(suggestion);
+        if (alternative.length > results.length) {
+          didYouMean = suggestion;
+          correctedResults = alternative;
+        }
+      }
+    }
+
+    // Kullanıcı hiç sonuç almadıysa doğrudan düzeltilmiş sonuçları göster (Google davranışı)
+    const usedCorrection = results.length === 0 && correctedResults;
+    if (usedCorrection) results = correctedResults;
+
     const duration = (performance.now() - start).toFixed(2);
 
     db.prepare('INSERT INTO search_logs (query, results_count, execution_ms) VALUES (?, ?, ?)')
@@ -1257,10 +1277,33 @@ app.get('/api/search', (req, res) => {
       resultsCount: results.length,
       executionMs: `${duration}ms`,
       source: 'NovaTurk SQLite Yerel Dizin',
+      didYouMean,
+      showingResultsFor: usedCorrection ? didYouMean : null,
       results
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// 3.5 Autocomplete — yazarken öneri
+app.get('/api/suggest', (req, res) => {
+  const prefix = req.query.q || '';
+  try {
+    res.json({ success: true, query: prefix, suggestions: getSuggestions(prefix, 8) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message, suggestions: [] });
+  }
+});
+
+// 3.6 Sözlüğü yeniden kur (admin) — yeni sayfalar eklendikçe öneriler tazelensin
+app.post('/api/admin/rebuild-vocabulary', requireAdminKey, (req, res) => {
+  try {
+    const count = rebuildSearchVocabulary();
+    logAdminAction('rebuild_vocabulary', null, { terms: count });
+    res.json({ success: true, terms: count });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

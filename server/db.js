@@ -209,6 +209,16 @@ export function initDatabase() {
 
   initFullTextIndex();
 
+  // Sözlük tablosu yoksa veya boşsa kur (autocomplete + yazım düzeltme için)
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS search_vocab (term TEXT PRIMARY KEY, normalized TEXT NOT NULL, frequency INTEGER NOT NULL DEFAULT 1)`);
+    const vocabCount = db.prepare('SELECT COUNT(*) as count FROM search_vocab').get().count;
+    const pageCount = db.prepare('SELECT COUNT(*) as count FROM pages').get().count;
+    if (pageCount > 0 && vocabCount === 0) rebuildSearchVocabulary();
+  } catch (err) {
+    console.warn('[NovaTurk Sözlük] Başlangıç kontrolü hatası:', err.message);
+  }
+
   // İlk Kurulumda 50 Türk Sitesini Veritabanına Yükle
   seedInitialSites();
 }
@@ -268,6 +278,7 @@ function initFullTextIndex() {
       db.exec("INSERT INTO pages_fts(pages_fts) VALUES('rebuild')");
       db.prepare("INSERT OR REPLACE INTO fts_meta (key, value) VALUES ('indexed_pages', ?)").run(String(pageCount));
       console.log(`[NovaTurk FTS] Ters indeks kuruldu: ${pageCount} sayfa indekslendi.`);
+      rebuildSearchVocabulary(); // sözlük de indeksle birlikte tazelensin
     }
 
     ftsAvailable = true;
@@ -275,6 +286,205 @@ function initFullTextIndex() {
   } catch (err) {
     ftsAvailable = false;
     console.warn('[NovaTurk FTS] FTS5 kullanılamıyor, eski LIKE aramasına düşülüyor:', err.message);
+  }
+}
+
+// ============================================================================
+// 📖 ARAMA SÖZLÜĞÜ (Autocomplete + Yazım Düzeltme temeli)
+// İndekslenmiş sayfa başlıklarından terim frekans sözlüğü çıkarır. Hem "yazarken
+// öneri" hem de "bunu mu demek istediniz?" bu sözlüğün üstünde çalışır.
+// ============================================================================
+
+// Türkçe'de çok geçen ama arama için ayırt edici olmayan kelimeler
+const TURKISH_STOPWORDS = new Set([
+  've', 'ile', 'için', 'bir', 'bu', 'da', 'de', 'mi', 'mı', 'mu', 'mü', 'ne',
+  'ya', 'ki', 'ise', 'gibi', 'daha', 'çok', 'olan', 'olarak', 'son', 'en',
+  'the', 'and', 'for', 'com', 'www', 'http', 'https'
+]);
+
+// Türkçe harfleri ASCII karşılığına indirger — şapkasız yazımı eşleştirmek için.
+export function normalizeTurkish(text) {
+  return (text || '')
+    .toLowerCase()
+    .replace(/ı/g, 'i').replace(/İ/g, 'i')
+    .replace(/ş/g, 's').replace(/Ş/g, 's')
+    .replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
+    .replace(/ü/g, 'u').replace(/Ü/g, 'u')
+    .replace(/ö/g, 'o').replace(/Ö/g, 'o')
+    .replace(/ç/g, 'c').replace(/Ç/g, 'c');
+}
+
+export function rebuildSearchVocabulary() {
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS search_vocab (
+        term TEXT PRIMARY KEY,
+        normalized TEXT NOT NULL,
+        frequency INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE INDEX IF NOT EXISTS idx_vocab_normalized ON search_vocab(normalized);
+      CREATE INDEX IF NOT EXISTS idx_vocab_frequency ON search_vocab(frequency DESC);
+    `);
+
+    const rows = db.prepare('SELECT title FROM pages').all();
+    const counts = new Map();
+
+    for (const row of rows) {
+      const words = (row.title || '')
+        .toLowerCase()
+        .split(/[^a-zçğıöşü0-9]+/i)
+        .filter(w => w.length >= 3 && w.length <= 24 && !TURKISH_STOPWORDS.has(w) && !/^\d+$/.test(w));
+
+      for (const word of words) {
+        counts.set(word, (counts.get(word) || 0) + 1);
+      }
+    }
+
+    db.exec('DELETE FROM search_vocab');
+    const insert = db.prepare('INSERT OR REPLACE INTO search_vocab (term, normalized, frequency) VALUES (?, ?, ?)');
+    let stored = 0;
+    for (const [term, freq] of counts) {
+      if (freq < 2) continue; // tek seferlik kelimeler (çoğu çöp) sözlüğe girmesin
+      insert.run(term, normalizeTurkish(term), freq);
+      stored++;
+    }
+
+    console.log(`[NovaTurk Sözlük] ${stored} terim indekslendi (${rows.length} başlıktan).`);
+    return stored;
+  } catch (err) {
+    console.warn('[NovaTurk Sözlük] Kurulum hatası:', err.message);
+    return 0;
+  }
+}
+
+// Kelimenin ünsüz iskeleti ("durumu" → "drm"). Sesli harflerin atıldığı yazımları
+// eşleştirmek için kullanılır.
+function consonantSkeleton(normalizedWord) {
+  return (normalizedWord || '').replace(/[aeiou]/g, '');
+}
+
+// Levenshtein mesafesi — erken çıkışlı (maxDistance aşılırsa hesabı bırakır)
+function editDistance(a, b, maxDistance = 2) {
+  if (Math.abs(a.length - b.length) > maxDistance) return maxDistance + 1;
+  if (a === b) return 0;
+
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    if (rowMin > maxDistance) return maxDistance + 1; // bu satırdan sonrası kesin daha kötü
+    prev = curr;
+  }
+  return prev[b.length];
+}
+
+// "Bunu mu demek istediniz?" — sorgudaki her kelimeyi sözlükteki en yakın,
+// daha sık geçen terimle değiştirmeyi dener. Hiçbir kelime düzeltilmezse null döner.
+export function suggestSpellingCorrection(query) {
+  try {
+    const words = (query || '').toLowerCase().split(/\s+/).filter(Boolean);
+    if (words.length === 0 || words.length > 6) return null;
+
+    let anyCorrection = false;
+    const corrected = [];
+
+    for (const word of words) {
+      if (word.length < 4) { corrected.push(word); continue; }
+
+      const normalized = normalizeTurkish(word);
+      const exact = db.prepare('SELECT term FROM search_vocab WHERE normalized = ? LIMIT 1').get(normalized);
+      if (exact) { corrected.push(word); continue; } // zaten doğru yazılmış
+
+      // Aday havuzunu daraltmak için: aynı harfle başlayan ve uzunluğu yakın terimler
+      const candidates = db.prepare(`
+        SELECT term, normalized, frequency FROM search_vocab
+        WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
+          AND length(normalized) BETWEEN ? AND ?
+        ORDER BY frequency DESC LIMIT 400
+      `).all(normalized, Math.max(3, normalized.length - 2), normalized.length + 2);
+
+      let best = null;
+      for (const candidate of candidates) {
+        const distance = editDistance(normalized, candidate.normalized, 2);
+        if (distance > 2) continue;
+        if (!best || distance < best.distance || (distance === best.distance && candidate.frequency > best.frequency)) {
+          best = { term: candidate.term, distance, frequency: candidate.frequency };
+        }
+      }
+
+      // Sesli harfi atılmış kısaltmalar ("drm" → "durumu", "hbr" → "haber").
+      // Türkçe'de çok yaygın bir yazım alışkanlığı; düzenleme mesafesi bunu yakalayamaz
+      // çünkü 3+ harf eksiktir. Ünsüz iskeletini karşılaştırmak doğru sonucu verir.
+      if (!best) {
+        const skeleton = consonantSkeleton(normalized);
+        if (skeleton.length >= 2) {
+          const skeletonMatch = db.prepare(`
+            SELECT term, normalized, frequency FROM search_vocab
+            WHERE substr(normalized, 1, 1) = substr(?, 1, 1)
+            ORDER BY frequency DESC LIMIT 600
+          `).all(normalized).find(c => consonantSkeleton(c.normalized) === skeleton);
+
+          if (skeletonMatch) best = { term: skeletonMatch.term, distance: 3, frequency: skeletonMatch.frequency };
+        }
+      }
+
+      if (best) { corrected.push(best.term); anyCorrection = true; }
+      else corrected.push(word);
+    }
+
+    if (!anyCorrection) return null;
+    const suggestion = corrected.join(' ');
+    return suggestion.toLowerCase() === (query || '').toLowerCase() ? null : suggestion;
+  } catch (err) {
+    console.warn('[NovaTurk Yazım] Öneri hatası:', err.message);
+    return null;
+  }
+}
+
+// Autocomplete — geçmiş aramalar (popülerlik) + sözlük terimleri + sayfa başlıkları
+export function getSuggestions(prefix, limit = 8) {
+  try {
+    const raw = (prefix || '').trim().toLowerCase();
+    if (raw.length < 2) return [];
+    const normalized = normalizeTurkish(raw);
+    const suggestions = [];
+    const seen = new Set();
+
+    const add = (text, source) => {
+      const key = (text || '').toLowerCase().trim();
+      if (!key || seen.has(key) || key === raw) return;
+      seen.add(key);
+      suggestions.push({ text: key, source });
+    };
+
+    // 1) Daha önce yapılmış aramalar — en güçlü sinyal
+    db.prepare(`
+      SELECT query, COUNT(*) as hits FROM search_logs
+      WHERE lower(query) LIKE ? GROUP BY lower(query) ORDER BY hits DESC LIMIT ?
+    `).all(raw + '%', limit).forEach(r => add(r.query, 'gecmis'));
+
+    // 2) Sözlükteki popüler terimler (şapkasız yazıma da uyar)
+    db.prepare(`
+      SELECT term FROM search_vocab WHERE normalized LIKE ?
+      ORDER BY frequency DESC LIMIT ?
+    `).all(normalized + '%', limit).forEach(r => add(r.term, 'sozluk'));
+
+    // 3) Eşleşen sayfa başlıkları — somut içerik önerisi
+    if (suggestions.length < limit) {
+      db.prepare(`
+        SELECT title FROM pages WHERE lower(title) LIKE ? LIMIT ?
+      `).all(raw + '%', limit - suggestions.length).forEach(r => add(r.title, 'baslik'));
+    }
+
+    return suggestions.slice(0, limit);
+  } catch (err) {
+    console.warn('[NovaTurk Öneri] Hata:', err.message);
+    return [];
   }
 }
 
