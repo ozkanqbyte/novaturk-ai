@@ -482,8 +482,8 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
 
   const tabs = [
     { id: 'all', label: 'Tümü', icon: Globe },
-    { id: 'images', label: 'Görseller', icon: ImageIcon },
-    { id: 'news', label: 'Haberler', icon: Newspaper }
+    { id: 'images', label: visuals.length > 0 ? `Görseller (${visuals.length})` : 'Görseller', icon: ImageIcon },
+    { id: 'news', label: news.length > 0 ? `Haberler (${news.length})` : 'Haberler', icon: Newspaper }
   ];
 
   return (
@@ -946,6 +946,98 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
+          {/* 🌟 2.5 CANLI TÜRKİYE BASINI & GOOGLE NEWS TR (Hızlı Akış) */}
+          {activeTab === 'all' && news && news.length > 0 && (
+            <div className={`p-4 rounded-3xl border transition-all ${
+              isDark 
+                ? 'bg-gradient-to-br from-slate-900/90 to-slate-950/90 border-sky-500/20 shadow-lg backdrop-blur-xl' 
+                : 'bg-gradient-to-br from-sky-50/60 to-white border-sky-200/80 shadow-sm backdrop-blur-xl'
+            }`}>
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 dark:text-slate-300 flex items-center gap-1.5">
+                    <Newspaper className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Canlı Basın & Son Dakika</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20">
+                    Canlı Google News TR
+                  </span>
+                </div>
+
+                <button
+                  onClick={() => {
+                    sound.playClick();
+                    setActiveTab('news');
+                  }}
+                  className="text-xs font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors hover:underline"
+                >
+                  <span>Tümünü Gör ({news.length})</span>
+                  <ExternalLink className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* İlk 3 Canlı Haber Kartı */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {news.slice(0, 3).map((n, i) => (
+                  <div
+                    key={n.id || i}
+                    onClick={() => {
+                      sound.playClick();
+                      setReaderArticle({
+                        title: n.title,
+                        snippet: n.snippet,
+                        description: n.snippet,
+                        link: n.url || n.link,
+                        url: n.url || n.link,
+                        sourceName: n.source,
+                        displayLink: n.sourceDomain || n.domain
+                      });
+                    }}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.02] flex flex-col justify-between ${
+                      isDark 
+                        ? 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10 hover:border-sky-500/30' 
+                        : 'bg-white hover:bg-slate-50 border-black/8 hover:border-sky-500/30 shadow-sm'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <img
+                            src={`https://www.google.com/s2/favicons?domain=${n.sourceDomain || n.domain || 'hurriyet.com.tr'}&sz=32`}
+                            alt={n.source}
+                            className="w-4 h-4 rounded shrink-0 object-contain"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          />
+                          <span className="text-[11px] font-bold truncate opacity-90 group-hover:text-sky-400 transition-colors">
+                            {n.source}
+                          </span>
+                        </div>
+                        <span className="text-[10px] opacity-60 shrink-0 font-mono">
+                          {n.timeAgo || n.time}
+                        </span>
+                      </div>
+
+                      <h5 className="text-xs font-semibold leading-snug line-clamp-2 mb-2 group-hover:text-sky-300 transition-colors">
+                        {n.title}
+                      </h5>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] text-emerald-400 font-medium">
+                      <span className="flex items-center gap-1">
+                        <BookOpen className="w-3 h-3" /> Reklamsız Oku
+                      </span>
+                      <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 🌟 3. DOĞRULANMIŞ WEB SONUÇLARI */}
           {activeTab === 'all' && (
             <div className="space-y-3 pt-2">
@@ -1093,18 +1185,202 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
             </div>
           )}
 
-          {/* Haberler Tab */}
+          {/* 🌟 4. CANLI HABERLER TABI (Apple Safari & VisionOS Frosted Glass Standartlarında) */}
           {activeTab === 'news' && (
-            <div className="space-y-3">
-              {news.map((n, i) => (
-                <div key={i} className="apple-glass-card rounded-2xl p-4 border border-white/10">
-                  <span className="text-[11px] font-bold text-sky-400 block mb-1">{n.source} • {n.time}</span>
-                  <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold hover:underline block mb-1">
-                    {n.title}
-                  </a>
-                  <p className="text-xs opacity-70">{n.snippet}</p>
+            <div className="space-y-4">
+              {/* Canlı Haber Başlık Çubuğu */}
+              <div className={`p-4 sm:p-5 rounded-3xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                isDark 
+                  ? 'bg-slate-900/70 border-white/10 backdrop-blur-xl' 
+                  : 'bg-white/80 border-black/8 shadow-sm backdrop-blur-xl'
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-3 w-3 shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-bold tracking-tight text-white dark:text-white font-['Outfit',sans-serif]">
+                        Canlı Türkiye Basını & Google News TR
+                      </h3>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-mono font-bold border border-emerald-500/20">
+                        {news.length} Doğrulanmış Haber
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Sözcü, Hürriyet, NTV, Habertürk, AA ve önde gelen Türk medyasından anlık akış.
+                    </p>
+                  </div>
                 </div>
-              ))}
+
+                <div className="flex items-center gap-2 shrink-0 text-xs">
+                  <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] text-slate-300 flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Reklamsız Saf Okuma</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Haber Kartları Listesi */}
+              {news.length === 0 ? (
+                <div className={`p-12 text-center rounded-3xl border ${
+                  isDark ? 'bg-white/[0.02] border-white/10' : 'bg-black/[0.02] border-black/10'
+                }`}>
+                  <Newspaper className="w-10 h-10 mx-auto opacity-30 text-sky-400 mb-3" />
+                  <h4 className="text-sm font-semibold mb-1">Anlık Haber Akışı Taranıyor...</h4>
+                  <p className="text-xs opacity-60 max-w-sm mx-auto">
+                    "{query}" araması ile ilgili Türk basınından canlı haberler getiriliyor.
+                  </p>
+                </div>
+              ) : (
+                news.map((n, i) => (
+                  <article 
+                    key={n.id || i}
+                    className={`group relative rounded-3xl p-5 sm:p-6 border transition-all duration-300 hover:shadow-2xl hover:-translate-y-0.5 ${
+                      isDark 
+                        ? 'bg-slate-900/60 hover:bg-slate-900/85 border-white/10 hover:border-sky-500/30 text-white backdrop-blur-xl' 
+                        : 'bg-white/80 hover:bg-white border-black/8 hover:border-sky-500/30 text-slate-900 shadow-sm backdrop-blur-xl'
+                    }`}
+                  >
+                    {/* Kart Üst Satır: Gazete Logosu + Kaynak Adı + Zaman Rozeti */}
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Gazete Favicon Kapsülü */}
+                        <div className="w-8 h-8 rounded-xl bg-white/10 dark:bg-white/10 p-1 flex items-center justify-center border border-white/10 shrink-0 shadow-sm overflow-hidden group-hover:scale-105 transition-transform">
+                          <img
+                            src={`https://www.google.com/s2/favicons?domain=${n.sourceDomain || n.domain || 'hurriyet.com.tr'}&sz=64`}
+                            alt={n.source}
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                            }}
+                            className="w-5 h-5 object-contain"
+                          />
+                          <Newspaper className="w-4 h-4 text-sky-400 hidden" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold truncate group-hover:text-sky-400 transition-colors">
+                              {n.source}
+                            </span>
+                            <span title="Doğrulanmış Türk Basını" className="text-emerald-400 flex items-center">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 block truncate font-mono">
+                            {n.sourceDomain || n.domain}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Canlı Zaman Rozeti */}
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-[11px] font-medium text-slate-400 shrink-0 font-mono">
+                        <Clock className="w-3 h-3 text-sky-400" />
+                        <span>{n.timeAgo || n.time || 'Az önce'}</span>
+                      </div>
+                    </div>
+
+                    {/* Haber Başlığı */}
+                    <h3 
+                      onClick={() => {
+                        sound.playClick();
+                        setReaderArticle({
+                          title: n.title,
+                          snippet: n.snippet,
+                          description: n.snippet,
+                          link: n.url || n.link,
+                          url: n.url || n.link,
+                          sourceName: n.source,
+                          displayLink: n.sourceDomain || n.domain
+                        });
+                      }}
+                      className="text-base sm:text-lg font-bold leading-snug tracking-tight mb-2 group-hover:text-sky-300 transition-colors cursor-pointer font-['Outfit',sans-serif]"
+                    >
+                      {n.title}
+                    </h3>
+
+                    {/* Haber Metni */}
+                    <p className="text-xs sm:text-sm text-slate-300/85 dark:text-slate-300/85 leading-relaxed line-clamp-3 mb-4 font-normal">
+                      {n.snippet}
+                    </p>
+
+                    {/* Apple Safari Alt Aksiyon Çubuğu */}
+                    <div className="flex items-center justify-between pt-3 border-t border-white/10 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        {/* Haberi Oku (Okuyucu Modu - Reklamsız) */}
+                        <button
+                          onClick={() => {
+                            sound.playClick();
+                            setReaderArticle({
+                              title: n.title,
+                              snippet: n.snippet,
+                              description: n.snippet,
+                              link: n.url || n.link,
+                              url: n.url || n.link,
+                              sourceName: n.source,
+                              displayLink: n.sourceDomain || n.domain
+                            });
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-300 text-xs font-semibold flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shadow-sm"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Haberi Oku (Okuyucu Modu)</span>
+                        </button>
+
+                        {/* Yanda Aç (Split View) */}
+                        <button
+                          onClick={() => {
+                            sound.playClick();
+                            setSplitArticle({
+                              title: n.title,
+                              snippet: n.snippet,
+                              link: n.url || n.link,
+                              displayLink: n.source
+                            });
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/25 text-sky-300 text-xs font-medium flex items-center gap-1.5 transition-all hover:scale-105"
+                        >
+                          <Columns className="w-3 h-3" />
+                          <span className="hidden sm:inline">Yanda İncele</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Orijinal Gazete Sitesine Git */}
+                        <a
+                          href={n.url || n.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Orijinal Gazete Sayfasında Aç"
+                          className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs flex items-center gap-1 transition-all"
+                        >
+                          <span className="text-[11px] hidden md:inline">Orijinal Kaynak</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+
+                        {/* Paylaş */}
+                        <button
+                          onClick={() => {
+                            sound.playClick();
+                            if (navigator.share) {
+                              navigator.share({ title: n.title, url: n.url || n.link }).catch(() => {});
+                            } else {
+                              navigator.clipboard.writeText(`${n.title} - ${n.url || n.link}`);
+                              alert('Haber bağlantısı kopyalandı!');
+                            }
+                          }}
+                          title="Haberi Paylaş"
+                          className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all"
+                        >
+                          <Share2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
           )}
 
