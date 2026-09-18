@@ -951,12 +951,12 @@ const isElectronApp = () => {
                 isDark ? 'bg-[#08090d]/90' : 'bg-[#f6f7fb]/92'
               }`}
             >
-              <div className="w-full max-w-7xl mx-auto px-4 flex items-center justify-start gap-3 sm:gap-4">
+              <div className="w-full max-w-7xl mx-auto px-4 flex items-center justify-start relative">
                 
-                {/* 🌟 1. AŞAĞIDAKİ KARTLARLA AYNI HİZADA BAŞLAYAN APPLE LOGO VE İSİM */}
+                {/* 🌟 1. AŞAĞIDAKİ KARTLARIN BİRAZ SOLUNDA YERLEŞEN APPLE LOGO (Google Desktop Tarzı) */}
                 <button
                   onClick={handleHomeClick}
-                  className="flex items-center gap-2 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left"
+                  className="flex items-center gap-2 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left xl:absolute xl:right-full xl:mr-4 2xl:mr-6 mr-3"
                   title="Ana Sayfaya Dön"
                 >
                   {/* Apple Squircle Compass Icon */}
@@ -976,7 +976,7 @@ const isElectronApp = () => {
                   </div>
 
                   {/* Minimalist Apple Logo & İsim */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 whitespace-nowrap">
                     <span className={`${
                       isSearchHeaderMini ? 'text-xs sm:text-sm' : 'text-sm sm:text-base'
                     } font-bold tracking-tight font-['Outfit',sans-serif] transition-all ${
@@ -992,7 +992,7 @@ const isElectronApp = () => {
                   </div>
                 </button>
 
-                {/* 🌟 2. HEMEN YANINDA (AZ MESAFELİ VE SOLDA): ARAMA BARI */}
+                {/* 🌟 2. ARAMA BARI: AŞAĞIDAKİ KARTLARLA BİREBİR AYNI DİKEY HİZADA BAŞLAR */}
                 <div className="w-full max-w-xl sm:max-w-2xl">
                   <SearchBar 
                     onSearch={handleSearch} 

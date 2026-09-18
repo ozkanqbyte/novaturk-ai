@@ -59,8 +59,8 @@ export default function MobileTabsSheet({
             }}
             className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 transition-all ${
               tabFilter === 'incognito' 
-                ? 'bg-purple-600 text-white shadow-md' 
-                : 'text-purple-300 hover:text-purple-100'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-400/40 shadow-md' 
+                : 'text-slate-400 hover:text-white'
             }`}
           >
             <EyeOff className="w-3 h-3" />
