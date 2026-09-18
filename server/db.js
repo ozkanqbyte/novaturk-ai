@@ -704,7 +704,13 @@ export function searchLocalDb(query) {
             // sonuç da sınırsız avantaj kazanmasın.
             const clickStat = clickBoosts.get(row.url);
             const weight = clickStat?.weight || 0;
-            const clickBonus = weight > 0 ? Math.log2(1 + weight) * 12 : 0;
+            // Güven eşiği: tek bir kullanıcının tıkı sıralamayı değiştirmesin. Sonuç
+            // puanları birbirine çok yakın olduğu için eşik olmadan 1 tık bile 5.'yi 1.'ye
+            // taşıyordu (canlıda test edildi). En az 3 ayrı tık (farklı kişi/gün) gerekir.
+            const MIN_CLICKS_FOR_BOOST = 3;
+            const clickBonus = (clickStat?.clicks || 0) >= MIN_CLICKS_FOR_BOOST
+              ? Math.log2(1 + weight) * 6
+              : 0;
             const { bm25_score, ...rest } = row;
             return {
               ...rest,
