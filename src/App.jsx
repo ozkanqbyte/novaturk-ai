@@ -70,13 +70,15 @@ export default function App() {
     { 
       id: 'tab_default', 
       type: 'search', 
-      title: 'Yeni Sekme', 
+      title: 'Ana Sayfa', 
       query: '', 
       results: null, 
       hasSearched: false, 
       isLoading: false,
       history: [''],
-      historyIndex: 0
+      historyIndex: 0,
+      isHome: true,
+      isNewTab: false
     }
   ]);
   const [activeTabId, setActiveTabId] = useState('tab_default');
@@ -242,7 +244,9 @@ export default function App() {
       results: null,
       hasSearched: false,
       isLoading: false,
-      isIncognito: false
+      isIncognito: false,
+      isHome: false,
+      isNewTab: true
     };
     setTabs(prev => [...prev, newTab]);
     setActiveTabId(newId);
@@ -696,7 +700,7 @@ const isElectronApp = () => {
     sound.playClick();
     setTabs(prev => prev.map(t => {
       if (t.id === activeTabId) {
-        return { ...t, hasSearched: false, results: null, query: '', title: 'Yeni Sekme' };
+        return { ...t, hasSearched: false, results: null, query: '', title: 'Ana Sayfa', isHome: true, isNewTab: false };
       }
       return t;
     }));
@@ -850,19 +854,23 @@ const isElectronApp = () => {
           /* ============================================================ */
           /* PURE APPLE MINIMALIST HERO VIEW (YENİ SEKME BAŞLANGIÇ SAYFASI) */
           /* ============================================================ */
-          <div className="w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 pt-8 sm:pt-14">
+          <div className={`w-full h-full overflow-y-auto flex-1 flex flex-col items-center justify-start pb-28 md:pb-12 ${
+            activeTab.isNewTab ? 'pt-8 sm:pt-12' : 'pt-12 sm:pt-20'
+          }`}>
             <div className="w-full max-w-3xl mx-auto px-4 flex flex-col items-center text-center animate-fadeIn">
               
-              {/* 🍏 APPLE TARZINDA MİNİMALİST LOGO VE İSİM */}
+              {/* 🌟 LOGO: HOME'DA BÜYÜK VE ASİL, YENİ SEKMEDE MİNİMALİST APPLE SAFARI */}
               <NovaTurkGoogleLogo 
                 isDark={isDark} 
                 currentTheme={currentTheme} 
+                isMinimal={activeTab.isNewTab === true} 
                 showSubtitle={false} 
-                size="medium" 
               />
 
-              {/* 🔍 Apple VisionOS Search Bar (Bir tık aşağıda, ferah ve modern) */}
-              <div className="w-full max-w-2xl mt-4 sm:mt-5 mb-8 sm:mb-10">
+              {/* 🔍 Arama Çubuğu (Bir tık aşağıda, ferah ve modern) */}
+              <div className={`w-full max-w-2xl ${
+                activeTab.isNewTab ? 'mt-4 sm:mt-5 mb-8 sm:mb-10' : 'mt-6 sm:mt-8 mb-10 sm:mb-12'
+              }`}>
                 <SearchBar 
                   onSearch={handleSearch} 
                   isCompact={false} 
