@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import dns from 'dns/promises';
 import { rateLimit } from 'express-rate-limit';
-import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction } from './db.js';
+import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
 
@@ -2225,3 +2225,42 @@ app.listen(PORT, () => {
     } catch (e) {}
   }, 30 * 60 * 1000);
 });
+
+// 🛡️ Düzgün Kapanma (Graceful Shutdown) — systemctl restart/stop veya Ctrl+C sırasında
+// veritabanını yarım yazım halinde bırakmadan önce WAL'ı diske yazıp güvenli kapatır.
+// (Bu eksikliğin gerçek bir veritabanı bozulmasına yol açtığı görüldü, bkz. proje notları.)
+let shuttingDown = false;
+function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[NovaTurk] ${signal} alındı, güvenli kapatma başlatılıyor...`);
+  closeDatabase();
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// 💾 Otomatik Veritabanı Yedekleme — günde bir kere, son 7 yedek saklanır.
+const BACKUP_DIR = path.join(__dirname, '../database/backups');
+function backupDatabase() {
+  try {
+    const dbPath = path.join(__dirname, '../database/novaturk.db');
+    if (!fs.existsSync(dbPath)) return;
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(BACKUP_DIR, `novaturk-${stamp}.db`);
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);'); // yedeklemeden önce WAL'ı ana dosyaya yaz
+    fs.copyFileSync(dbPath, backupPath);
+
+    const backups = fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith('novaturk-')).sort();
+    while (backups.length > 7) {
+      fs.unlinkSync(path.join(BACKUP_DIR, backups.shift()));
+    }
+    console.log(`[NovaTurk Yedekleme] Yedek alındı: ${backupPath}`);
+  } catch (err) {
+    console.warn('[NovaTurk Yedekleme] Hata:', err.message);
+  }
+}
+setInterval(backupDatabase, 24 * 60 * 60 * 1000);
+setTimeout(backupDatabase, 60 * 1000); // açılıştan 1 dakika sonra ilk yedek

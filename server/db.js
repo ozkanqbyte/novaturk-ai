@@ -99,6 +99,10 @@ try {
   const sqliteModule = await import('node:sqlite');
   if (sqliteModule && sqliteModule.DatabaseSync) {
     dbInstance = new sqliteModule.DatabaseSync(DB_PATH);
+    // WAL modunda ani süreç sonlandırmalarında (ör. systemctl restart) bozulma riskini azaltmak için
+    // senkron modu güvenli tarafta tutuyoruz. (Bu ayarlar zaten node:sqlite'ın WAL varsayılanıyla uyumlu.)
+    dbInstance.exec('PRAGMA journal_mode=WAL;');
+    dbInstance.exec('PRAGMA synchronous=NORMAL;');
     console.log('[NovaTurk DB] Native SQLite motoru aktif.');
   } else {
     throw new Error('DatabaseSync not found');
@@ -109,6 +113,23 @@ try {
 }
 
 export const db = dbInstance;
+
+// Sunucu kapanırken (systemctl restart/stop, SIGINT vb.) WAL'ı ana dosyaya yazıp veritabanını
+// düzgün kapatır. Önceden bu hiç yapılmıyordu ve ani kapanmalar veritabanı bozulmasına yol açtı
+// (bu oturumda gerçekten yaşandı ve elle onarıldı — bkz. proje notları).
+export function closeDatabase() {
+  try {
+    if (typeof dbInstance.exec === 'function') {
+      dbInstance.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    }
+    if (typeof dbInstance.close === 'function') {
+      dbInstance.close();
+    }
+    console.log('[NovaTurk DB] Veritabanı güvenli şekilde kapatıldı.');
+  } catch (err) {
+    console.error('[NovaTurk DB] Kapatma hatası:', err.message);
+  }
+}
 
 // Veritabanı Tablolarını Başlat
 export function initDatabase() {
