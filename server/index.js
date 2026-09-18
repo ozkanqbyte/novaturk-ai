@@ -876,8 +876,8 @@ app.get('/auth/google/start', (req, res) => {
 </html>`);
 });
 
-// 🧹 Eski Next.js / PWA Service Worker ve Önbellek Temizleyicileri (Kesin Çözüm)
-app.all(['/sw.js', '/service-worker.js', '/workbox-*.js', '/worker.js'], (req, res) => {
+// 🧹 Eski Next.js / PWA Service Worker ve Önbellek Temizleyicileri (Kesin Çözüm - Express 5 Uyumlu)
+app.all(['/sw.js', '/service-worker.js', '/worker.js', /^\/workbox-.*\.js$/], (req, res) => {
   res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.setHeader('Clear-Site-Data', '"cache", "storage"');
@@ -895,7 +895,7 @@ app.all(['/sw.js', '/service-worker.js', '/workbox-*.js', '/worker.js'], (req, r
   `);
 });
 
-app.all('/_next/*', (req, res) => {
+app.all(/^\/_next\/.*/, (req, res) => {
   res.setHeader('Clear-Site-Data', '"cache", "storage"');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   if (req.path.endsWith('.json')) {
