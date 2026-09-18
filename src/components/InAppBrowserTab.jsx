@@ -21,10 +21,16 @@ const isKnownBlockedDomain = (url) => {
   try {
     const host = new URL(url).hostname.toLowerCase();
     return [
-      'claude.ai', 'anthropic.com', 'perplexity.ai',
-      'chatgpt.com', 'openai.com', 'google.com', 'google.com.tr',
+      'claude.ai', 'claude.com', 'anthropic.com',
+      'chatgpt.com', 'chat.openai.com', 'openai.com',
+      'perplexity.ai', 'deepseek.com', 'chat.deepseek.com',
+      'gemini.google.com', 'google.com', 'google.com.tr', 'accounts.google.com',
+      'bing.com', 'copilot.microsoft.com', 'microsoft.com',
       'github.com', 'twitter.com', 'x.com', 'youtube.com',
-      'facebook.com', 'instagram.com', 'linkedin.com', 'netflix.com'
+      'facebook.com', 'instagram.com', 'linkedin.com', 'netflix.com',
+      'spotify.com', 'reddit.com', 'tiktok.com', 'discord.com',
+      'web.whatsapp.com', 'web.telegram.org', 'apple.com', 'icloud.com',
+      'trendyol.com', 'hepsiburada.com', 'sahibinden.com', 'amazon.com', 'amazon.com.tr'
     ].some(d => host === d || host.endsWith('.' + d));
   } catch {
     return false;
