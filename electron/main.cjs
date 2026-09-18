@@ -118,6 +118,7 @@ function createWindow() {
       contextIsolation: false,
       webSecurity: false,
       webviewTag: true,
+      backgroundThrottling: false,
       preload: path.join(__dirname, 'preload.cjs')
     }
   });

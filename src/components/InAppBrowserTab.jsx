@@ -49,6 +49,13 @@ export default function InAppBrowserTab({
   reloadKey = 1,
   onContextMenu
 }) {
+  const innerRef = useRef(null);
+  useEffect(() => {
+    if (iframeRef && innerRef.current) {
+      iframeRef.current = innerRef.current;
+    }
+  });
+
   const isElectron = isElectronApp();
   const currentUrl = tab.url || 'https://google.com';
 
@@ -398,11 +405,12 @@ export default function InAppBrowserTab({
 
             {isElectron ? (
               <webview
-                ref={iframeRef}
+                ref={innerRef}
                 key={reloadKey}
                 src={currentUrl}
                 partition={tab.isIncognito ? "nopersist_incognito" : "persist:novaturk_browsing"}
                 allowpopups="true"
+                webpreferences="backgroundThrottling=no"
                 preload={window.electron?.webviewPreloadPath}
                 className="w-full h-full border-0 absolute inset-0"
                 style={{ width: '100%', height: '100%' }}
@@ -427,7 +435,7 @@ export default function InAppBrowserTab({
                 </div>
 
                 <iframe
-                  ref={iframeRef}
+                  ref={innerRef}
                   key={reloadKey}
                   src={
                     (targetProxyUrl && targetProxyUrl.startsWith('http'))

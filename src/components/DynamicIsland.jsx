@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Zap, Volume2, VolumeX, Camera, Eye, Columns, Copy, Check, 
-  ShieldCheck, Sparkles, ChevronDown, ChevronUp, Clock, Flame, ArrowUp, RefreshCw
+  ShieldCheck, Sparkles, ChevronDown, ChevronUp, Clock, Flame, 
+  ArrowUp, RefreshCw, Move, EyeOff, Play, Pause, Music, 
+  ExternalLink, Search, X, Compass, Globe
 } from 'lucide-react';
 import { sound } from '../services/soundService';
 
@@ -13,12 +15,54 @@ export default function DynamicIsland({
   comparison,
   isDark, 
   currentTheme,
+  tabs = [],
+  activeTabId,
+  onSelectTab,
+  onCloseTab,
+  onNewTab,
+  onSearch,
   onScrollToTop
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isBionicActive, setIsBionicActive] = useState(false);
   const [isSplitActive, setIsSplitActive] = useState(false);
+  const [quickSearchText, setQuickSearchText] = useState('');
+  const [currentTime, setCurrentTime] = useState('');
+
+  // 🌟 Kullanıcı Kapatabilsin / Gizleyebilsin (Sekmeleri kapatmayı önlemek için)
+  const [isHidden, setIsHidden] = useState(() => {
+    try {
+      return localStorage.getItem('novaturk_island_hidden') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // 🌟 Sürüklenebilirlik (Draggable) State'i
+  // Varsayılan: Ekranın ortasında, sekme çubuğunun hemen altında (top: 56px), sekmeleri kapatmayacak yükseklikte
+  const [position, setPosition] = useState(() => {
+    try {
+      const saved = localStorage.getItem('novaturk_island_pos');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return { x: null, y: 56 };
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, posX: 0, posY: 0 });
+  const islandRef = useRef(null);
+
+  // Canlı Saat Güncellemesi
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      setCurrentTime(now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Arama yapıldığında adayı kısa süreliğine canlandır (Pulsing expansion)
   useEffect(() => {
@@ -45,6 +89,82 @@ export default function DynamicIsland({
       window.removeEventListener('novaturk:split-change', handleSplitChange);
     };
   }, []);
+
+  // 🌟 Sürükleme Başlatıcı
+  const handleMouseDown = (e) => {
+    if (e.target.closest('button') || e.target.closest('input')) return;
+
+    setIsDragging(true);
+    const rect = islandRef.current?.getBoundingClientRect();
+    const currentX = rect ? rect.left : (window.innerWidth / 2 - 180);
+    const currentY = rect ? rect.top : 56;
+
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      posX: currentX,
+      posY: currentY
+    };
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - dragStartRef.current.mouseX;
+      const deltaY = e.clientY - dragStartRef.current.mouseY;
+      
+      const newX = Math.max(10, Math.min(window.innerWidth - 300, dragStartRef.current.posX + deltaX));
+      const newY = Math.max(10, Math.min(window.innerHeight - 80, dragStartRef.current.posY + deltaY));
+
+      setPosition({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      if (isDragging) {
+        setIsDragging(false);
+        try {
+          if (position.x !== null) {
+            localStorage.setItem('novaturk_island_pos', JSON.stringify(position));
+          }
+        } catch {}
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, position]);
+
+  const handleToggleHide = (e) => {
+    e.stopPropagation();
+    sound.playClick();
+    const nextHidden = !isHidden;
+    setIsHidden(nextHidden);
+    try {
+      localStorage.setItem('novaturk_island_hidden', String(nextHidden));
+    } catch {}
+  };
+
+  const handleResetPosition = (e) => {
+    e?.stopPropagation();
+    sound.playClick();
+    const defaultPos = { x: null, y: 56 };
+    setPosition(defaultPos);
+    try {
+      localStorage.removeItem('novaturk_island_pos');
+    } catch {}
+  };
+
+  // Açık Sekmeler Arasında YouTube veya Medya Çalan Sekmeyi Bul
+  const activeMediaTab = tabs.find(t => 
+    t.type === 'web' && 
+    (t.url?.includes('youtube.com') || t.url?.includes('youtu.be') || t.url?.includes('spotify') || t.title?.toLowerCase().includes('youtube'))
+  );
 
   const handleToggleSpeak = (e) => {
     e.stopPropagation();
@@ -82,12 +202,63 @@ export default function DynamicIsland({
     }
   };
 
+  const handleQuickSearchSubmit = (e) => {
+    e.preventDefault();
+    if (!quickSearchText.trim()) return;
+    sound.playChime();
+    if (onSearch) {
+      onSearch(quickSearchText.trim());
+    }
+    setQuickSearchText('');
+    setIsExpanded(false);
+  };
+
   const themeAccent = currentTheme?.accent || '#38bdf8';
+
+  // 🌟 GİZLENDİĞİNDE: MİNİMAL SAĞ ÜST CAM KAPSÜL
+  if (isHidden) {
+    return (
+      <button
+        onClick={handleToggleHide}
+        style={{
+          boxShadow: `0 8px 30px rgba(0,0,0,0.5), 0 0 15px ${themeAccent}30`
+        }}
+        className="fixed top-14 right-4 z-[90] flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-2xl bg-black/85 border border-white/20 text-white hover:border-sky-400 hover:scale-105 transition-all duration-300 group shadow-lg cursor-pointer select-none"
+        title="Dinamik Adayı Göster"
+      >
+        <div 
+          style={{ backgroundColor: `${themeAccent}25`, color: themeAccent }}
+          className="w-4 h-4 rounded-full flex items-center justify-center border border-white/10"
+        >
+          <Zap className="w-2.5 h-2.5 animate-pulse" />
+        </div>
+        <span className="text-[11px] font-medium tracking-tight text-white/90">Dinamik Ada</span>
+        {activeMediaTab && (
+          <span className="flex items-center gap-0.5 ml-0.5">
+            <span className="w-1 h-2.5 bg-red-400 animate-pulse rounded-full" />
+            <span className="w-1 h-3.5 bg-red-400 animate-pulse delay-75 rounded-full" />
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  const stylePos = position.x === null 
+    ? { top: `${position.y}px`, left: '50%', transform: 'translateX(-50%)' }
+    : { top: `${position.y}px`, left: `${position.x}px` };
 
   return (
     <div 
-      className="fixed top-1.5 left-1/2 -translate-x-1/2 z-[100] transition-all duration-500 ease-out select-none"
-      style={{ pointerEvents: 'auto' }}
+      ref={islandRef}
+      onMouseDown={handleMouseDown}
+      style={{ 
+        ...stylePos,
+        pointerEvents: 'auto',
+        touchAction: 'none'
+      }}
+      className={`fixed z-[95] select-none transition-all ${
+        isDragging ? 'cursor-grabbing opacity-90 scale-[1.02]' : 'duration-300'
+      }`}
     >
       <div 
         onClick={() => {
@@ -96,165 +267,262 @@ export default function DynamicIsland({
         }}
         style={{
           boxShadow: isExpanded 
-            ? `0 25px 80px -10px rgba(0,0,0,0.95), 0 0 35px ${themeAccent}40`
-            : '0 8px 30px -5px rgba(0,0,0,0.7), 0 0 15px rgba(255,255,255,0.05)'
+            ? `0 30px 90px -10px rgba(0,0,0,0.95), 0 0 40px ${themeAccent}40, inset 0 1px 1px rgba(255,255,255,0.25)`
+            : `0 10px 35px -5px rgba(0,0,0,0.7), 0 0 20px rgba(255,255,255,0.06), inset 0 1px 1px rgba(255,255,255,0.2)`
         }}
-        className={`cursor-pointer transition-all duration-500 cubic-bezier(0.16, 1, 0.3, 1) border backdrop-blur-2xl flex flex-col items-center overflow-hidden ${
+        className={`cursor-pointer transition-all duration-300 cubic-bezier(0.16, 1, 0.3, 1) border backdrop-blur-3xl flex flex-col items-center overflow-hidden ${
           isExpanded 
-            ? 'w-[94vw] sm:w-[480px] p-4 rounded-[28px] bg-[#000000]/95 border-white/25 text-white' 
-            : 'h-8 px-3.5 rounded-full bg-[#000000]/95 border-white/20 text-white hover:border-sky-400/60 hover:scale-[1.03]'
+            ? 'w-[94vw] sm:w-[500px] p-4 rounded-[28px] bg-black/90 border-white/25 text-white' 
+            : 'h-10 px-4 rounded-full bg-black/90 border-white/20 text-white hover:border-white/35 hover:scale-[1.02]'
         }`}
       >
         {/* ============================================================ */}
-        {/* 1. KAPSÜL / KAPALI HAL (APPLE DYNAMIC ISLAND COMPACT NOTCH)  */}
+        {/* 1. KAPSÜL / KAPALI HAL (APPLE VISIONOS GLASS NOTCH)          */}
         {/* ============================================================ */}
         <div className="w-full flex items-center justify-between gap-3 h-full">
           
-          {/* Sol İkon & Canlı Durum */}
+          {/* Sol İkon & Sürükleme Tutamacı */}
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-4 h-4 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center relative">
-              <Zap className="w-2.5 h-2.5 text-sky-400 fill-current animate-pulse" />
+            <div 
+              style={{ backgroundColor: `${themeAccent}25`, borderColor: `${themeAccent}50` }}
+              className="w-5 h-5 rounded-full border flex items-center justify-center relative shadow-sm"
+            >
+              <Zap className="w-3 h-3 text-sky-400 fill-current animate-pulse" />
               {isSpeaking && (
                 <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               )}
             </div>
+
+            {/* Sürükleme İkonu Göstergesi */}
+            <span 
+              className="p-1 rounded-md text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors cursor-grab" 
+              title="Adayı Ekranda İstediğin Yere Sürükle"
+            >
+              <Move className="w-3 h-3" />
+            </span>
             
-            <span className="text-[11px] font-bold tracking-tight text-white/90 font-['Outfit',sans-serif] hidden sm:inline">
-              NovaTürk Ada
+            <span className="text-xs font-bold tracking-tight text-white/95 font-['Outfit',sans-serif] hidden sm:inline">
+              NovaTürk
             </span>
           </div>
 
-          {/* Orta Kısım: Sorgu, Durum veya Karşılama */}
-          <div className="flex items-center gap-2 min-w-0">
-            {isSearching ? (
+          {/* Orta Kısım: Sorgu, Durum, Medya veya Karşılama */}
+          <div className="flex items-center gap-2 min-w-0 flex-1 justify-center px-2">
+            {activeMediaTab ? (
+              <div className="flex items-center gap-2 text-xs font-medium text-red-300 truncate">
+                <Music className="w-3.5 h-3.5 text-red-400 shrink-0 animate-bounce" />
+                <span className="truncate max-w-[160px] text-white/90 font-medium">
+                  {activeMediaTab.title || 'YouTube Çalıyor'}
+                </span>
+                {/* Canlı Equalizer */}
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <span className="w-1 h-3 bg-red-400 animate-pulse rounded-full" />
+                  <span className="w-1 h-2 bg-red-400 animate-pulse delay-75 rounded-full" />
+                  <span className="w-1 h-3.5 bg-red-400 animate-pulse delay-150 rounded-full" />
+                </div>
+              </div>
+            ) : isSearching ? (
               <div className="flex items-center gap-1.5 text-xs text-sky-300 animate-pulse">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-bounce" />
-                <span className="truncate max-w-[150px] font-medium">Taranıyor...</span>
+                <span className="truncate max-w-[160px] font-medium">Taranıyor...</span>
               </div>
             ) : comparison ? (
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-300 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping shrink-0" />
                 <span className="truncate max-w-[170px]">⚔️ {comparison.entityA.name} vs {comparison.entityB.name}</span>
               </div>
             ) : query ? (
-              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-200 truncate">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                 <span className="truncate max-w-[160px] font-semibold">"{query}"</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-300 font-medium">
-                <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                <span>Apple Dynamic Ada Devrede</span>
+              <div className="flex items-center gap-1.5 text-xs text-slate-200 font-medium">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Apple VisionOS Ada</span>
               </div>
             )}
           </div>
 
-          {/* Sağ Kısım: Ses Dalgası & Genişletme Oku */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isSpeaking ? (
-              /* Canlı Apple Müzik Tarzı Ses Frekans Dalgaları */
-              <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[9px] font-mono">
+          {/* Sağ Kısım: Durum, Genişletme & Gizleme Butonu */}
+          <div className="flex items-center gap-1 shrink-0">
+            {isSpeaking && (
+              <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-mono">
                 <span className="w-1 h-3 bg-emerald-400 animate-pulse rounded-full" />
                 <span className="w-1 h-2 bg-emerald-400 animate-pulse delay-75 rounded-full" />
                 <span className="w-1 h-3.5 bg-emerald-400 animate-pulse delay-150 rounded-full" />
                 <span className="ml-1 hidden sm:inline">Okunuyor</span>
               </div>
-            ) : isBionicActive ? (
-              <span className="px-1.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-400/40 text-sky-300 text-[9px] font-mono">
-                Biyonik
-              </span>
-            ) : null}
+            )}
 
-            <div className="p-0.5 rounded-full hover:bg-white/10 text-slate-400">
-              {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {/* Genişletme / Küçültme Oku */}
+            <div className="p-1 rounded-full hover:bg-white/15 text-slate-300 transition-colors">
+              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </div>
+
+            {/* 🌟 Kapatma / Gizleme Butonu (Sekmelerin üstünü asla kapatmasın) */}
+            <button
+              onClick={handleToggleHide}
+              className="p-1 rounded-full hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors ml-0.5"
+              title="Adayı Gizle (Sekmeleri Görmek İçin)"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
           </div>
 
         </div>
 
         {/* ============================================================ */}
-        {/* 2. GENİŞLETİLMİŞ HAL (EXPANDED APPLE ISLAND HUD)              */}
+        {/* 2. GENİŞLETİLMİŞ HAL (APPLE VISIONOS EXPANDED CONTROL CENTER)  */}
         {/* ============================================================ */}
         {isExpanded && (
           <div 
             onClick={(e) => e.stopPropagation()} 
-            className="w-full pt-3 mt-2 border-t border-white/10 space-y-3 animate-in fade-in zoom-in-95 duration-200 text-left"
+            className="w-full pt-3.5 mt-2.5 border-t border-white/10 space-y-3.5 animate-in fade-in zoom-in-95 duration-200 text-left"
           >
-            {/* Canlı İstatistik Çubuğu */}
-            <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5" /> 50 Türk Kaynağı • Sıfır Reklam
-              </span>
-              <span className="font-mono text-slate-300">
-                ⚡ 0.4s Işık Hızı
-              </span>
-            </div>
+            {/* 🎵 1. APPLE MUSIC & YOUTUBE CANLI MEDYA ÇALAR KARTI */}
+            {activeMediaTab ? (
+              <div className="p-3 rounded-2xl bg-gradient-to-r from-red-950/40 via-red-900/20 to-black/60 border border-red-500/30 backdrop-blur-xl flex items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-red-600/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                    <Music className="w-4 h-4 text-red-400 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold text-red-300 tracking-tight flex items-center gap-1.5">
+                      <span>YouTube Canlı Müzik</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                    </div>
+                    <div className="text-xs font-semibold text-white/95 truncate max-w-[240px]">
+                      {activeMediaTab.title || 'YouTube Arka Plan Oynatma'}
+                    </div>
+                  </div>
+                </div>
 
-            {/* Sadede Gel veya Kafa Kafaya Önizleme */}
-            {comparison ? (
-              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 leading-relaxed">
-                <strong className="text-amber-300">⚔️ Kafa Kafaya Matris:</strong> {comparison.entityA.name} ({comparison.entityA.score}) vs {comparison.entityB.name} ({comparison.entityB.score}) • <strong>Öne Çıkan:</strong> {comparison.winnerName}
-              </div>
-            ) : sadedeGel?.summary ? (
-              <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-slate-200 leading-relaxed line-clamp-3">
-                <strong className="text-sky-300">Sadede Gel Özeti:</strong> {sadedeGel.summary}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      sound.playClick();
+                      if (onSelectTab) onSelectTab(activeMediaTab.id);
+                      setIsExpanded(false);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-white flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
+                    title="Müziğin Çaldığı Sekmeye Git"
+                  >
+                    <span>Sekmeye Git</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </button>
+                  {onCloseTab && (
+                    <button
+                      onClick={() => {
+                        sound.playClick();
+                        onCloseTab(activeMediaTab.id);
+                      }}
+                      className="p-1.5 rounded-xl hover:bg-red-500/20 border border-transparent hover:border-red-500/30 text-slate-400 hover:text-red-300 transition-colors"
+                      title="Müzik Sekmesini Kapat"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="p-2.5 rounded-xl bg-white/[0.04] border border-white/10 text-xs text-slate-300 leading-relaxed">
-                Türkiye'nin reklamsız, bağımsız arama motoru devrede. Ekşi Sözlük, Şikayetvar, DonanımHaber ve 50 seçkin Türk platformu anlık taranıyor.
+              <div className="p-3 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-between text-xs text-slate-300">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-sky-400" />
+                  <span>Hızlı YouTube Müzik Başlat:</span>
+                </div>
+                <button
+                  onClick={() => {
+                    sound.playChime();
+                    if (onNewTab) onNewTab('https://www.youtube.com');
+                    setIsExpanded(false);
+                  }}
+                  className="px-3 py-1 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 text-xs font-semibold transition-all hover:scale-105 cursor-pointer"
+                >
+                  ▶ YouTube'u Aç
+                </button>
               </div>
             )}
 
-            {/* Hızlı Aksiyon Butonları (Grid) */}
-            <div className="grid grid-cols-4 gap-1.5 pt-1">
+            {/* 🔍 2. DİNAMİK ADA İÇİ HIZLI ARAMA GİRİŞİ */}
+            <form onSubmit={handleQuickSearchSubmit} className="relative w-full">
+              <input 
+                type="text"
+                value={quickSearchText}
+                onChange={(e) => setQuickSearchText(e.target.value)}
+                placeholder="Ada içinden hızlı arama yap..."
+                className="w-full pl-9 pr-16 py-2 rounded-2xl bg-white/[0.06] border border-white/15 text-white placeholder-slate-400 text-xs focus:outline-none focus:border-sky-400 focus:bg-white/[0.1] transition-all"
+              />
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <button
+                type="submit"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-[11px] font-semibold transition-all cursor-pointer shadow-sm"
+              >
+                Ara
+              </button>
+            </form>
+
+            {/* ⚡ 3. Sadede Gel veya Kafa Kafaya Matris Özeti */}
+            {comparison ? (
+              <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 leading-relaxed">
+                <strong className="text-amber-300">⚔️ Kafa Kafaya Matris:</strong> {comparison.entityA.name} ({comparison.entityA.score}) vs {comparison.entityB.name} ({comparison.entityB.score}) • <strong>Öne Çıkan:</strong> {comparison.winnerName}
+              </div>
+            ) : sadedeGel?.summary ? (
+              <div className="p-2.5 rounded-2xl bg-white/[0.04] border border-white/10 text-xs text-slate-200 leading-relaxed line-clamp-3">
+                <strong className="text-sky-300">Sadede Gel Özeti:</strong> {sadedeGel.summary}
+              </div>
+            ) : null}
+
+            {/* 🎛️ 4. HIZLI APPLE AKSİYON BUTONLARI */}
+            <div className="grid grid-cols-4 gap-2 pt-0.5">
               
-              {/* 1. Sesli Dinle */}
+              {/* Sesli Oku */}
               <button
                 onClick={handleToggleSpeak}
-                className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-all ${
+                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-[10px] font-medium transition-all ${
                   isSpeaking 
                     ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20' 
-                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-slate-300 hover:text-white'
                 }`}
-                title="Sadede Gel Özeti Sesli Dinle"
+                title="Sayfayı Sesli Dinle"
               >
                 {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 <span>{isSpeaking ? 'Durdur' : 'Sesli Dinle'}</span>
               </button>
 
-              {/* 2. NovaKart İndir */}
-              <button
-                onClick={handleDownloadNovaKart}
-                className="p-2 rounded-xl border bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-sky-300 flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-all"
-                title="Instagram Story ve X Kartı İndir (1200x680)"
-              >
-                <Camera className="w-4 h-4 text-sky-400" />
-                <span>NovaKart</span>
-              </button>
-
-              {/* 3. Biyonik Okuma */}
+              {/* Biyonik Okuma */}
               <button
                 onClick={handleToggleBionic}
-                className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-all ${
+                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-[10px] font-medium transition-all ${
                   isBionicActive 
                     ? 'bg-sky-500 text-white border-sky-400' 
-                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-slate-300 hover:text-white'
                 }`}
-                title="İlk Yarısı Kalın Hızlı Biyonik Okuma Modu"
+                title="Biyonik Hızlı Okuma Modu"
               >
                 <Eye className="w-4 h-4" />
                 <span>{isBionicActive ? 'Biyonik Açık' : 'Biyonik Oku'}</span>
               </button>
 
-              {/* 4. Ekranı Böl (Split View) */}
+              {/* NovaKart */}
+              <button
+                onClick={handleDownloadNovaKart}
+                className="p-2.5 rounded-2xl border bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-slate-300 hover:text-sky-300 flex flex-col items-center justify-center gap-1.5 text-[10px] font-medium transition-all"
+                title="Sosyal Medya NovaKart İndir"
+              >
+                <Camera className="w-4 h-4 text-sky-400" />
+                <span>NovaKart</span>
+              </button>
+
+              {/* Ekranı Böl (Split View) */}
               <button
                 onClick={handleToggleSplit}
-                className={`p-2 rounded-xl border flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-all ${
+                className={`p-2.5 rounded-2xl border flex flex-col items-center justify-center gap-1.5 text-[10px] font-medium transition-all ${
                   isSplitActive 
                     ? 'bg-purple-500 text-white border-purple-400' 
-                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-white/[0.04] hover:bg-white/[0.09] border-white/10 text-slate-300 hover:text-white'
                 }`}
-                title="Arc Tarzı Ekranı İkiye Böl (Split View)"
+                title="Ekranı Böl"
               >
                 <Columns className="w-4 h-4" />
                 <span>{isSplitActive ? 'Bölmeyi Kapat' : 'Split View'}</span>
@@ -262,26 +530,44 @@ export default function DynamicIsland({
 
             </div>
 
-            {/* Alt Kısım: Başa Dön & Küçült */}
-            <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[10px] text-slate-400">
-              <button 
-                onClick={handleScrollTopClick}
-                className="flex items-center gap-1 hover:text-white transition-colors"
-              >
-                <ArrowUp className="w-3 h-3" />
-                <span>Sayfa Başına Çık</span>
-              </button>
+            {/* 📊 5. SİSTEM BİLGİSİ, SAAT & ALT KONTROLLER */}
+            <div className="flex items-center justify-between pt-2 border-t border-white/10 text-[11px] text-slate-400">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1 text-slate-300 font-mono">
+                  <Clock className="w-3 h-3 text-sky-400" /> {currentTime || '12:00'}
+                </span>
+                <span>•</span>
+                <span className="text-slate-300 font-medium">
+                  {tabs.length} Sekme Açık
+                </span>
+              </div>
 
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  sound.playClick();
-                  setIsExpanded(false);
-                }}
-                className="px-2 py-0.5 rounded-md hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
-              >
-                Kapat ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={handleResetPosition}
+                  className="px-2 py-0.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-slate-200 transition-colors text-[10px]"
+                  title="Adayı Ekranın Ortasına Geri Getir"
+                >
+                  Konumu Sıfırla
+                </button>
+                <button 
+                  onClick={handleScrollTopClick}
+                  className="p-1 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors"
+                  title="Sayfa Başına Çık"
+                >
+                  <ArrowUp className="w-3.5 h-3.5" />
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sound.playClick();
+                    setIsExpanded(false);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold transition-colors"
+                >
+                  Kapat ✕
+                </button>
+              </div>
             </div>
 
           </div>

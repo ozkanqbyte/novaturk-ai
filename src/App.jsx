@@ -617,7 +617,7 @@ const isElectronApp = () => {
       {/* 🌟 10 Canlı Cam & Gradient Arka Planı (Arama Sayfasında Görünür) */}
       {activeTab.type === 'search' && <AuroraBackground currentTheme={currentTheme} isDark={isDark} />}
 
-      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR & ETKİLEŞİMLİ) */}
+      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR, SÜRÜKLENEBİLİR & ETKİLEŞİMLİ) */}
       <DynamicIsland 
         query={activeTab.query}
         isSearching={activeTab.isLoading}
@@ -626,6 +626,12 @@ const isElectronApp = () => {
         comparison={activeTab.results?.comparison}
         isDark={isDark}
         currentTheme={currentTheme}
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={(id) => setActiveTabId(id)}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        onSearch={handleSearch}
         onScrollToTop={() => {
           const el = document.querySelector('.overflow-y-auto');
           if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
@@ -697,26 +703,43 @@ const isElectronApp = () => {
         />
       )}
 
-      {/* 🌟 4. TAM EKRAN İÇERİK ALANI */}
+      {/* 🌟 4. TAM EKRAN İÇERİK ALANI (KALICI SEKMELER & KESİNTİSİZ SES) */}
       <main className="flex-1 w-full h-full overflow-hidden flex flex-col relative z-10">
-        {activeTab.type === 'web' ? (
-          /* ============================================================ */
-          /* %100 TAM EKRAN WEB SEKME İÇİ TARAYICI                        */
-          /* ============================================================ */
-          <InAppBrowserTab 
-            key={activeTab.id}
-            tab={activeTab}
-            onClose={handleCloseTab}
-            onUpdateTab={handleUpdateTab}
-            isDark={isDark}
-            currentTheme={currentTheme}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-            iframeRef={iframeRef}
-            reloadKey={reloadKey}
-            onContextMenu={setContextMenuData}
-          />
-        ) : !activeTab.hasSearched ? (
+        {/* ============================================================ */}
+        {/* KALICI WEB SEKMELERİ (ARKA PLANDA YOUTUBE SESİ ASLA KESİLMEZ) */}
+        {/* ============================================================ */}
+        {tabs.filter(t => t.type === 'web').map((webTab) => {
+          const isThisActive = activeTabId === webTab.id;
+          return (
+            <div
+              key={webTab.id}
+              className={`w-full h-full absolute inset-0 ${isThisActive ? 'z-20' : 'z-0 pointer-events-none'}`}
+              style={{
+                visibility: isThisActive ? 'visible' : 'hidden',
+              }}
+            >
+              <InAppBrowserTab 
+                tab={webTab}
+                onClose={handleCloseTab}
+                onUpdateTab={handleUpdateTab}
+                isDark={isDark}
+                currentTheme={currentTheme}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                iframeRef={isThisActive ? iframeRef : undefined}
+                reloadKey={reloadKey}
+                onContextMenu={setContextMenuData}
+              />
+            </div>
+          );
+        })}
+
+        {/* ============================================================ */}
+        {/* EĞER AKTİF SEKME ARAMA / YENİ SEKME İSE GÖSTER               */}
+        {/* ============================================================ */}
+        {activeTab.type === 'search' && (
+          <div className="w-full h-full relative z-10 flex flex-col flex-1 overflow-hidden">
+            {!activeTab.hasSearched ? (
           activeTab.isIncognito ? (
             <IncognitoHeroView 
               onSearch={handleSearch}
@@ -996,6 +1019,8 @@ const isElectronApp = () => {
                 </div>
               </div>
             </footer>
+          </div>
+        )}
           </div>
         )}
       </main>
