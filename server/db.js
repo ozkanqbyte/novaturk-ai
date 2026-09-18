@@ -394,7 +394,9 @@ export function suggestSpellingCorrection(query) {
     const corrected = [];
 
     for (const word of words) {
-      if (word.length < 4) { corrected.push(word); continue; }
+      // 3 harf de düzeltilebilmeli: "drm" → "durumu", "hbr" → "haber" gibi
+      // sesli harfi atılmış yazımlar Türkçe'de çok yaygın.
+      if (word.length < 3) { corrected.push(word); continue; }
 
       const normalized = normalizeTurkish(word);
       const exact = db.prepare('SELECT term FROM search_vocab WHERE normalized = ? LIMIT 1').get(normalized);
