@@ -876,11 +876,100 @@ app.get('/auth/google/start', (req, res) => {
 </html>`);
 });
 
+// 🧹 Eski Next.js / PWA Service Worker ve Önbellek Temizleyicileri (Kesin Çözüm)
+app.all(['/sw.js', '/service-worker.js', '/workbox-*.js', '/worker.js'], (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Clear-Site-Data', '"cache", "storage"');
+  res.send(`
+    self.addEventListener('install', (e) => { self.skipWaiting(); });
+    self.addEventListener('activate', (e) => {
+      self.registration.unregister().then(() => self.clients.matchAll()).then(clients => {
+        clients.forEach(client => {
+          if (client.url && 'navigate' in client) {
+            client.navigate('https://novaturk-engine.vercel.app');
+          }
+        });
+      });
+    });
+  `);
+});
+
+app.all('/_next/*', (req, res) => {
+  res.setHeader('Clear-Site-Data', '"cache", "storage"');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  if (req.path.endsWith('.json')) {
+    return res.json({});
+  }
+  if (req.path.endsWith('.css')) {
+    res.setHeader('Content-Type', 'text/css');
+    return res.send('/* reset */');
+  }
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.send(`
+    console.log("[NovaTurk] Eski Next.js çağrısı temizlendi.");
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+    }
+    if (typeof window !== 'undefined') {
+      window.location.replace('https://novaturk-engine.vercel.app');
+    }
+  `);
+});
+
+// 🧹 Manuel veya Otomatik Sıfırlama Sayfası (/reset veya /clean)
+app.get(['/reset', '/clean', '/fix'], (req, res) => {
+  res.setHeader('Clear-Site-Data', '"cache", "storage"');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>NovaTürk AI • Önbellek Temizleme</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { background: #050714; color: #38bdf8; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
+    .box { background: rgba(255,255,255,0.05); border: 1px solid rgba(56,189,248,0.2); padding: 32px; border-radius: 24px; max-width: 400px; }
+    h2 { margin: 0 0 12px; color: #fff; }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
+    .btn { display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #0284c7, #2563eb); color: #fff; text-decoration: none; border-radius: 12px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>🛡️ NovaTürk AI Hazırlanıyor</h2>
+    <p>Eski tarayıcı önbelleği başarıyla temizlendi. Resmî NovaTürk AI arama motoruna aktarılıyorsunuz...</p>
+    <a href="https://novaturk-engine.vercel.app" class="btn">NovaTürk'e Geç ↗</a>
+  </div>
+  <script>
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(registrations => {
+          for (const registration of registrations) { registration.unregister(); }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(keys => {
+          for (const key of keys) { caches.delete(key); }
+        });
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+    setTimeout(() => {
+      window.location.replace('https://novaturk-engine.vercel.app');
+    }, 1200);
+  </script>
+</body>
+</html>`);
+});
+
 // 🚀 Üretim Ortamında (Render vb.) Tarayıcı Girişlerini Resmî Vercel Arayüzüne Yönlendir
 app.use((req, res, next) => {
   const host = (req.headers.host || '').toLowerCase();
   const isRenderHost = host.includes('onrender.com') || !!process.env.RENDER;
   if (isRenderHost && req.method === 'GET' && !req.path.startsWith('/api/') && !req.path.startsWith('/assets/')) {
+    res.setHeader('Clear-Site-Data', '"cache", "storage"');
     if (req.headers.accept && req.headers.accept.includes('text/html')) {
       return res.redirect(302, 'https://novaturk-engine.vercel.app' + (req.url === '/' ? '' : req.url));
     }
