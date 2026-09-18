@@ -66,24 +66,8 @@ export default function InAppBrowserTab({
   const [connectedUser, setConnectedUser] = useState(null);
   const [authDismissed, setAuthDismissed] = useState(false);
 
-  // 🛡️ Akıllı Rota Normalizasyonu (Claude ve ChatGPT gibi sitelerin resmi sürümlerine yönlendir)
-  let targetProxyUrl = currentUrl;
-  try {
-    const parsed = new URL(currentUrl);
-    if (
-      parsed.hostname.includes('claude.ai') ||
-      (parsed.hostname.includes('claude.com') && (
-        parsed.pathname.includes('product') ||
-        parsed.pathname.includes('overview') ||
-        parsed.pathname.includes('login') ||
-        parsed.pathname.includes('chat')
-      ))
-    ) {
-      targetProxyUrl = 'https://claude.com/';
-    } else if (parsed.hostname.includes('chatgpt.com') || parsed.hostname.includes('chat.openai.com')) {
-      targetProxyUrl = 'https://openai.com/';
-    }
-  } catch(e) {}
+  // 🛡️ Canlı Gezinti: Tüm siteler (Claude, ChatGPT, Google vb.) doğrudan kendi orijinal adreslerinde açılır
+  const targetProxyUrl = currentUrl;
 
   const navigateToYouTube = () => {
     setAuthDismissed(true);

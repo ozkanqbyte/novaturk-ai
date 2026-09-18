@@ -285,23 +285,7 @@ app.get('/api/proxy', async (req, res) => {
     return res.status(400).send('Geçersiz URL biçimi.');
   }
 
-  // 🛡️ Claude ve AI Portalları Rota Normalizasyonu
-  // claude.ai veya claude.com/product/overview gibi 404 veren alt rotaları resmi çalışan ana sayfaya yönlendir
-  if (
-    parsedUrl.hostname.includes('claude.ai') ||
-    (parsedUrl.hostname.includes('claude.com') && (
-      parsedUrl.pathname.includes('product') ||
-      parsedUrl.pathname.includes('overview') ||
-      parsedUrl.pathname.includes('login') ||
-      parsedUrl.pathname.includes('chat')
-    ))
-  ) {
-    parsedUrl = new URL('https://claude.com/');
-  }
 
-  if (parsedUrl.hostname.includes('chatgpt.com') || parsedUrl.hostname.includes('chat.openai.com')) {
-    parsedUrl = new URL('https://openai.com/');
-  }
 
   // SSRF ve yerel ağ koruması
   const hostname = parsedUrl.hostname.toLowerCase();

@@ -324,10 +324,26 @@ app.whenReady().then(() => {
       applySessionStealthHooks(contents.session);
     }
 
-    // Popupları ve Google Giriş pencerelerini doğrudan NovaTürk içinde aç
+    // Popupları ve Google / Claude / OAuth Giriş pencerelerini doğrudan NovaTürk içinde güvenle aç
     contents.setWindowOpenHandler(({ url }) => {
-      console.log('[NovaTurk Nav] Pencere isteği:', url);
-      return { action: 'allow' };
+      console.log('[NovaTurk Nav] OAuth / Pencere isteği:', url);
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 620,
+          height: 750,
+          center: true,
+          autoHideMenuBar: true,
+          title: 'NovaTürk Güvenli Oturum Girişi',
+          backgroundColor: '#07090e',
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            webSecurity: false,
+            partition: 'persist:novaturk_browsing'
+          }
+        }
+      };
     });
 
     if (activeVpnRule && contents.session) {
