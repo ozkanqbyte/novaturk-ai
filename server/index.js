@@ -225,6 +225,11 @@ app.get('/api/proxy', async (req, res) => {
       const proxyHookScript = `
         <script>
           (function() {
+            // Client-side SPA Router'larının (Next.js, React vb.) 404 vermesini engelleyip doğru rotayı eşle
+            try {
+              window.history.replaceState(null, '', '${parsedUrl.pathname}${parsedUrl.search}');
+            } catch(e) {}
+
             const PROXY_PREFIX = '/api/proxy?url=';
             function wrapUrl(url) {
               if (!url || typeof url !== 'string') return url;
