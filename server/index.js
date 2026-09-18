@@ -9,6 +9,7 @@ import { rateLimit } from 'express-rate-limit';
 import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCacheStats, logAdminAction, closeDatabase, logResultClick, getClickAnalytics, getSuggestions, suggestSpellingCorrection, rebuildSearchVocabulary } from './db.js';
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
+import { initSafetyTables, refreshThreatFeeds, filterUnsafeResults, getSafetyOverview, scanIndexForSpam, checkThreat } from './safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +100,22 @@ async function assertSafeCrawlUrl(rawUrl) {
 
 // Veritabanını başlat
 initDatabase();
+initSafetyTables();
+
+// 🛡️ Güvenlik filtreli arama: bilinen zararlı adresler sonuçtan çıkar, spam puanı
+// yüksek sayfalar düşer, orta düzey spam sıralamada cezalandırılır.
+function safeSearchLocal(query) {
+  const { safe } = filterUnsafeResults(searchLocalDb(query), {
+    getUrl: r => r.url, getTitle: r => r.title, getSnippet: r => r.snippet, getAuthority: r => r.authority_score
+  });
+  return safe
+    .map(r => (r.spamPenalty ? { ...r, relevanceScore: Number((r.relevanceScore - r.spamPenalty * 0.6).toFixed(2)) } : r))
+    .sort((a, b) => b.relevanceScore - a.relevanceScore);
+}
+
+// Tehdit listelerini açılışta ve sonra 6 saatte bir tazele (arka planda, açılışı bekletmez)
+setTimeout(() => refreshThreatFeeds().catch(err => console.warn('[NovaTurk Güvenlik] Liste yenileme hatası:', err.message)), 20000);
+setInterval(() => refreshThreatFeeds().catch(() => {}), 6 * 60 * 60 * 1000);
 
 // 🧹 Veri saklama politikası: arama sorgusu logları süresiz saklanmıyor, 30 günden eskisi otomatik silinir.
 const LOG_RETENTION_DAYS = 30;
@@ -631,6 +648,7 @@ app.get('/admin', (req, res) => {
     <button class="tab-btn" data-tab="rss">📰 RSS Kaynakları</button>
     <button class="tab-btn" data-tab="blocked">🚫 Yasaklı Domainler</button>
     <button class="tab-btn" data-tab="complaints">⚠️ Şikayetler</button>
+    <button class="tab-btn" data-tab="safety">🛡️ Güvenlik</button>
     <button class="tab-btn" data-tab="learning">🔁 Öğrenme</button>
     <button class="tab-btn" data-tab="audit">🧾 Audit Log</button>
   </div>
@@ -678,6 +696,39 @@ app.get('/admin', (req, res) => {
     function switchTab(name) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+      if (name === 'safety') loadSafety();
+    }
+
+    async function loadSafety() {
+      const box = document.getElementById('tab-safety');
+      try {
+        const s = await apiCall('/api/admin/safety');
+        const feeds = (s.feeds || []).map(f => '<tr><td>' + f.source + '</td><td>' + f.threat_type + '</td><td>' + f.count + '</td></tr>').join('') || '<tr><td colspan="3" style="color:#475569">Henüz liste indirilmedi</td></tr>';
+        const sus = (s.suspiciousPages || []).map(p =>
+          '<tr><td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">' + p.url + '</td><td>' + p.score + '</td><td>' + (p.reasons || []).join(' · ') +
+          '</td><td><button class="sm danger" onclick="removeSpamPage(' + p.id + ')">Sil</button></td></tr>').join('') || '<tr><td colspan="4" style="color:#475569">İndekste şüpheli sayfa yok</td></tr>';
+        const r = s.runtime || {};
+        box.innerHTML =
+          '<div class="grid">' +
+            '<div class="card"><div class="label">Engellenen Tehdit</div><div class="value">' + (r.threatsBlocked || 0) + '</div></div>' +
+            '<div class="card"><div class="label">Elenen Spam</div><div class="value">' + (r.spamDropped || 0) + '</div></div>' +
+            '<div class="card"><div class="label">Cezalanan Spam</div><div class="value">' + (r.spamPenalized || 0) + '</div></div>' +
+          '</div>' +
+          '<section><div class="inline-form"><button onclick="refreshThreats()">🔄 Tehdit Listesini Şimdi Yenile</button></div>' +
+          '<p style="color:#64748b;font-size:12px">Son yenileme: ' + (s.lastRefresh || 'henüz yok') + ' (otomatik: 6 saatte bir)</p></section>' +
+          '<section><h2>Tehdit Kaynakları</h2><div class="panel-box"><table><thead><tr><th>Kaynak</th><th>Tür</th><th>Adres</th></tr></thead><tbody>' + feeds + '</tbody></table></div></section>' +
+          '<section><h2>İndeksteki Şüpheli Sayfalar (spam puanı)</h2><div class="panel-box"><table><thead><tr><th>Adres</th><th>Puan</th><th>Sebep</th><th></th></tr></thead><tbody>' + sus + '</tbody></table></div></section>';
+      } catch (err) {
+        box.innerHTML = '<p class="err">' + err.message + '</p>';
+      }
+    }
+    async function refreshThreats() {
+      try { const r = await apiCall('/api/admin/safety/refresh', { method: 'POST', body: '{}' }); toast(r.updated ? (r.total + ' adres yüklendi, ' + r.purged + ' sayfa temizlendi') : 'Liste alınamadı, eskisi korundu', !r.updated); loadSafety(); }
+      catch (err) { toast(err.message, true); }
+    }
+    async function removeSpamPage(id) {
+      try { await apiCall('/api/admin/safety/remove-page', { method: 'POST', body: JSON.stringify({ id }) }); toast('Sayfa silindi'); loadSafety(); }
+      catch (err) { toast(err.message, true); }
     }
     document.getElementById('tabs').addEventListener('click', e => {
       const btn = e.target.closest('.tab-btn');
@@ -825,6 +876,8 @@ app.get('/admin', (req, res) => {
             <div class="panel-box"><code>POST /api/report { url, reason, detail }</code> — kimlik doğrulaması gerektirmez, herkes gönderebilir.</div>
           </section>
         </div>
+
+        <div id="tab-safety" class="tab-panel"><p style="color:#64748b">Yükleniyor...</p></div>
 
         <div id="tab-learning" class="tab-panel">
           <div class="grid">
@@ -1266,7 +1319,7 @@ app.get('/api/search', (req, res) => {
 
   const start = performance.now();
   try {
-    let results = searchLocalDb(query);
+    let results = safeSearchLocal(query);
 
     // "Bunu mu demek istediniz?" — sonuç gelse bile öneriyi hesapla.
     // suggestSpellingCorrection zaten sözlükte bulunan kelimeleri atlar, yani doğru
@@ -1279,7 +1332,7 @@ app.get('/api/search', (req, res) => {
     let correctedResults = null;
     const suggestion = suggestSpellingCorrection(query);
     if (suggestion) {
-      const alternative = searchLocalDb(suggestion);
+      const alternative = safeSearchLocal(suggestion);
       const originalBest = results[0]?.relevanceScore || 0;
       const correctedBest = alternative[0]?.relevanceScore || 0;
       const clearlyBetter = results.length === 0
@@ -1353,6 +1406,42 @@ app.get('/api/suggest', (req, res) => {
   } catch (err) {
     res.status(500).json({ success: false, error: err.message, suggestions: [] });
   }
+});
+
+// 3.55 Güvenlik yönetimi (admin): tehdit listesi durumu, elle yenileme, indeksteki şüpheli sayfalar
+app.get('/api/admin/safety', requireAdminKey, (req, res) => {
+  res.json({ success: true, ...getSafetyOverview(), suspiciousPages: scanIndexForSpam(30) });
+});
+
+app.post('/api/admin/safety/refresh', crawlLimiter, requireAdminKey, async (req, res) => {
+  try {
+    const result = await refreshThreatFeeds();
+    logAdminAction('refresh_threat_feeds', null, { updated: result.updated, total: result.total, purged: result.purged });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Şüpheli bir sayfanın domain'ini tek tıkla yasakla + sayfayı sil (mevcut yasaklama mekanizmasını kullanır)
+app.post('/api/admin/safety/remove-page', requireAdminKey, (req, res) => {
+  const { id } = req.body || {};
+  try {
+    const page = db.prepare('SELECT id, url FROM pages WHERE id = ?').get(id);
+    if (!page) return res.status(404).json({ success: false, error: 'Sayfa bulunamadı' });
+    db.prepare('DELETE FROM pages WHERE id = ?').run(id);
+    logAdminAction('remove_spam_page', page.url, { id });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Herkese açık şeffaflık: bir adres güvenlik listesinde mi? (kullanıcı şikayet etmeden önce kontrol edebilir)
+app.get('/api/safety/check', (req, res) => {
+  const url = String(req.query.url || '').slice(0, 2000);
+  const threat = checkThreat(url);
+  res.json({ success: true, url, flagged: !!threat, type: threat?.threat_type || null, source: threat?.source || null });
 });
 
 // 3.6 Sözlüğü yeniden kur (admin) — yeni sayfalar eklendikçe öneriler tazelensin
@@ -1493,12 +1582,17 @@ app.get('/api/live-web-search', async (req, res) => {
 
   // 2. ADIM: Kendi indeksimiz ve canlı DuckDuckGo aramasını PARALEL çalıştır
   const [ownIndexSettled, ddgSettled] = await Promise.allSettled([
-    Promise.resolve(searchLocalDb(query)),
+    Promise.resolve(safeSearchLocal(query)),
     fetchDdgResults(query)
   ]);
 
   const ownIndexRows = ownIndexSettled.status === 'fulfilled' ? ownIndexSettled.value : [];
-  const ddgResults = ddgSettled.status === 'fulfilled' ? ddgSettled.value : [];
+  // Canlı web sonuçları da aynı güvenlik filtresinden geçer — ve zararlı/spam bir adres
+  // filtreyi geçemezse kalıcı indekse HİÇ girmez (aşağıdaki indexDdgResultsIntoOwnDb).
+  const ddgRaw = ddgSettled.status === 'fulfilled' ? ddgSettled.value : [];
+  const ddgResults = filterUnsafeResults(ddgRaw, {
+    getUrl: r => r.link, getTitle: r => r.title, getSnippet: r => r.snippet, getAuthority: () => 0
+  }).safe;
 
   // Canlı bulunan DDG linklerini kalıcı index'e ekle (kalıcı öğrenme — bir daha bu URL için DDG'ye gitmeye gerek kalmaz)
   if (ddgResults.length > 0) {
@@ -1540,7 +1634,7 @@ app.get('/api/live-web-search', async (req, res) => {
   try {
     const suggestion = suggestSpellingCorrection(query);
     if (suggestion) {
-      const alternative = searchLocalDb(suggestion);
+      const alternative = safeSearchLocal(suggestion);
       const originalBest = ownIndexRows[0]?.relevanceScore || 0;
       const correctedBest = alternative[0]?.relevanceScore || 0;
       if (ownIndexRows.length === 0 ? alternative.length > 0 : correctedBest > originalBest * 1.2) {

@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { checkThreat, assessSpam, SPAM_DROP_THRESHOLD } from './safety.js';
 
 // Not: Bu URL'ler curl ile canlı test edilip (HTTP 200 + geçerli RSS/Atom içerik)
 // doğrulanmıştır. RSS akışları yayıncının kendi syndication amaçlı sunduğu
@@ -101,6 +102,8 @@ export async function ingestRssFeed(feed, maxItems = 15) {
     let inserted = 0;
     for (const item of items) {
       if (!item.link || !item.title) continue;
+      // Zararlı adres veya yüksek spam puanlı içerik indekse girmez
+      if (checkThreat(item.link) || assessSpam({ url: item.link, title: item.title, snippet: item.description, authorityScore: 90 }).score >= SPAM_DROP_THRESHOLD) continue;
       const snippet = item.description ? item.description.slice(0, 220) : item.title;
       insertPage.run(siteId, item.title, item.link, snippet, item.description || item.title);
       inserted++;

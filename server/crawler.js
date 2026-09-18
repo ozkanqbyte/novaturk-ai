@@ -1,4 +1,5 @@
 import { db } from './db.js';
+import { checkThreat, assessSpam, SPAM_DROP_THRESHOLD } from './safety.js';
 
 // Admin panelinden yasaklanmış bir domain mi? (blocked_domains tablosu)
 export function isDomainBlocked(hostname) {
@@ -155,7 +156,7 @@ export async function crawlSite(siteUrl, explicitSiteId = null) {
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) throw new Error(HTTP );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
 
     // HTML Temizleme ve Başlık Çıkarma
@@ -181,6 +182,15 @@ export async function crawlSite(siteUrl, explicitSiteId = null) {
 
     // Sayfa içi bağlantıları topla (Link Discovery)
     const discoveredLinks = extractLinks(html, siteUrl);
+
+    // Güvenlik: bilinen zararlı adres veya yüksek spam puanlı sayfa indekse girmez
+    if (checkThreat(siteUrl)) {
+      return { success: false, url: siteUrl, error: 'Bilinen zararlı adres (tehdit listesi)', links: [] };
+    }
+    const spam = assessSpam({ url: siteUrl, title, snippet: description, authorityScore: 0 });
+    if (spam.score >= SPAM_DROP_THRESHOLD) {
+      return { success: false, url: siteUrl, error: 'Spam olarak değerlendirildi: ' + spam.reasons.join(', '), links: [] };
+    }
 
     // Veritabanına kaydet — site_id her zaman gerçek hostname'e göre çözülür
     const resolvedSiteId = explicitSiteId || getOrCreateSiteId(parsedUrl.hostname);
