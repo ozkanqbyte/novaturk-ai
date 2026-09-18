@@ -80,21 +80,29 @@
       if (video && !video.__novaturk_setup) {
         video.__novaturk_setup = true;
         
-        // Şarkı/video bittiğinde otomatik sonraki parçaya geç (başa sarmayı %100 önler)
+        // Şarkı/video bittiğinde otomatik sonraki parçaya geçiş (başa sarmayı ve sayfa yenilemeyi %100 önler)
         video.addEventListener('ended', () => {
-          console.log('[NovaTurk Media] Şarkı bitti, sonraki parçaya geçiliyor...');
+          if (video.__novaturk_ended_handled) return;
+          video.__novaturk_ended_handled = true;
+          setTimeout(() => { video.__novaturk_ended_handled = false; }, 6000);
+
+          console.log('[NovaTurk Media] Şarkı bitti, sonraki parçaya akıcı geçiş denetleniyor...');
+          // YouTube'un kendi geçiş yapması için 2 saniye bekle, eğer hala bitişte kaldıysa tıkla
           setTimeout(() => {
-            const nextBtn = document.querySelector('.ytp-next-button');
-            if (nextBtn) {
-              nextBtn.click();
-            } else {
-              const nextThumb = document.querySelector('ytd-compact-video-renderer a#thumbnail, ytd-playlist-panel-video-renderer a#thumbnail');
-              if (nextThumb) nextThumb.click();
+            const v = document.querySelector('video');
+            if (v && (v.ended || (v.currentTime < 1 && v.paused))) {
+              const nextBtn = document.querySelector('.ytp-next-button');
+              if (nextBtn) {
+                nextBtn.click();
+              } else {
+                const nextThumb = document.querySelector('ytd-compact-video-renderer a#thumbnail, ytd-playlist-panel-video-renderer a#thumbnail');
+                if (nextThumb) nextThumb.click();
+              }
             }
-          }, 350);
+          }, 2000);
         });
 
-        // Autoplay toggle kapalıysa otomatik aç
+        // Autoplay toggle kapalıysa otomatik aç (kesintisiz akış için)
         try {
           const autonav = document.querySelector('.ytp-autonav-toggle-button[aria-checked="false"]');
           if (autonav) autonav.click();

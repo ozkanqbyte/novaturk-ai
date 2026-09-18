@@ -50,6 +50,7 @@ export default function InAppBrowserTab({
   onContextMenu
 }) {
   const innerRef = useRef(null);
+  const internalNavUrlRef = useRef('');
   useEffect(() => {
     if (iframeRef && innerRef.current) {
       iframeRef.current = innerRef.current;
@@ -181,14 +182,22 @@ export default function InAppBrowserTab({
     }
   }, [currentUrl]);
 
-  // Sekme URL'si değiştiğinde webview'i zorunlu yönlendir
+  // Sekme URL'si dışarıdan (Omnibar / Kısayol) değiştiğinde webview'i yönlendir
   useEffect(() => {
     const wv = iframeRef?.current;
     if (wv && isElectron && typeof wv.getURL === 'function' && typeof wv.loadURL === 'function') {
       try {
+        // Eğer bu URL değişikliği webview'in kendi iç gezinmesinden (ör. YouTube sonraki şarkı) geldiyse tekrar yükleme yapma!
+        if (internalNavUrlRef.current === tab.url) {
+          return;
+        }
         const wvUrl = wv.getURL();
-        if (wvUrl && tab.url && wvUrl !== tab.url) {
-          wv.loadURL(tab.url);
+        if (wvUrl && tab.url) {
+          const cleanWv = wvUrl.replace(/\/$/, '');
+          const cleanTab = tab.url.replace(/\/$/, '');
+          if (cleanWv !== cleanTab) {
+            wv.loadURL(tab.url);
+          }
         }
       } catch (err) {}
     }
@@ -309,10 +318,13 @@ export default function InAppBrowserTab({
     };
 
     const handleNavigate = (e) => {
-      if (e.url && onUpdateTab && e.url !== currentUrl) {
-        let host = e.url;
-        try { host = new URL(e.url).hostname; } catch {}
-        onUpdateTab(tab.id, { url: e.url, title: host });
+      if (e.url && onUpdateTab) {
+        internalNavUrlRef.current = e.url;
+        if (e.url !== currentUrl) {
+          let host = e.url;
+          try { host = new URL(e.url).hostname; } catch {}
+          onUpdateTab(tab.id, { url: e.url, title: host });
+        }
       }
     };
 

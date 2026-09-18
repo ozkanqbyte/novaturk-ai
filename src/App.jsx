@@ -173,26 +173,52 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [tabs, activeTabId]);
 
-  // 🌟 Global Sağ Tık Menüsü (Kopyala, Yapıştır, Geri, İleri, Ara)
+  // 🌟 Global Sağ Tık Menüsü (Kopyala, Yapıştır, İncele, Kaynak, Resim)
   useEffect(() => {
     const handleGlobalContextMenu = (e) => {
+      // 💡 Shift + Sağ Tık: Doğrudan Google Chrome'un kendi yerel sağ tık menüsünü aç
+      if (e.shiftKey) {
+        setContextMenuData(null);
+        return;
+      }
+
       e.preventDefault();
       const sel = window.getSelection()?.toString() || '';
       let targetLink = '';
       const linkEl = e.target.closest('a');
       if (linkEl && linkEl.href) targetLink = linkEl.href;
 
+      let imgSrc = '';
+      const imgEl = e.target.closest('img');
+      if (imgEl && imgEl.src) imgSrc = imgEl.src;
+
       setContextMenuData({
         x: e.clientX,
         y: e.clientY,
         visible: true,
         selectedText: sel,
-        linkUrl: targetLink
+        linkUrl: targetLink,
+        srcUrl: imgSrc
       });
     };
 
+    // 🌟 Tümünü Seç yapıldıktan sonra ekranda bir yere tıklandığında seçimi temizle (Mavi kilitlenmeyi çözer)
+    const handleGlobalClickToDeselect = (e) => {
+      if (e.target.closest('input') || e.target.closest('textarea')) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed) {
+        if (!e.target.closest('.selectable-text') && !e.target.closest('p') && !e.target.closest('h1') && !e.target.closest('h2') && !e.target.closest('h3')) {
+          sel.removeAllRanges();
+        }
+      }
+    };
+
     window.addEventListener('contextmenu', handleGlobalContextMenu);
-    return () => window.removeEventListener('contextmenu', handleGlobalContextMenu);
+    window.addEventListener('click', handleGlobalClickToDeselect);
+    return () => {
+      window.removeEventListener('contextmenu', handleGlobalContextMenu);
+      window.removeEventListener('click', handleGlobalClickToDeselect);
+    };
   }, []);
 
   // Canlı Tema Seçimi

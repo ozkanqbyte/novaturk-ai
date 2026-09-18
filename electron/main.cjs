@@ -318,6 +318,22 @@ app.whenReady().then(() => {
     }
   });
 
+  // 🔍 Google Chrome Geliştirici Araçları & İncele (DevTools / Inspect)
+  ipcMain.on('open-dev-tools', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
+
+  ipcMain.on('inspect-element', (event, data) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (data && typeof data.x === 'number' && typeof data.y === 'number') {
+        mainWindow.webContents.inspectElement(data.x, data.y);
+      }
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
+
   app.on('web-contents-created', (event, contents) => {
     contents.setUserAgent(CHROME_USER_AGENT);
 
