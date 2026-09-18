@@ -430,11 +430,11 @@ export function synthesizeComparisonMatrix(entityA, entityB, query, searchResult
         note: `${capA} ikinci el piyasasında değerini kat be kat korur.`
       },
       {
-        criteria: 'Halk / Şikayetvar Memnuniyeti',
+        criteria: 'Web Kaynaklarına Göre Memnuniyet (AI Tahmini)',
         valA: `%${satA} Pozitif Geri Bildirim`,
         valB: `%${satB} Pozitif Geri Bildirim`,
         winner: satA >= satB ? 'A' : 'B',
-        note: 'Ekşi Sözlük & Şikayetvar topluluk konsensüsü.'
+        note: 'Taranan web sonuçlarındaki anahtar kelime analizine dayalı tahmindir — belirli bir topluluk platformundan (Ekşi Sözlük/Şikayetvar) gerçek veri çekilmemiştir.'
       },
       {
         criteria: 'Günlük Kullanım Kolaylığı',

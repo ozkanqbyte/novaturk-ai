@@ -10,7 +10,7 @@ import confetti from 'canvas-confetti';
 import ReaderModeDrawer from './ReaderModeDrawer';
 import ComparisonMatrix from './ComparisonMatrix';
 import { sound } from '../services/soundService';
-import { unescapeHtml } from '../services/searchService';
+import { unescapeHtml, API_BASE } from '../services/searchService';
 
 export default function HybridResults({ results, onRelatedClick, isDark, currentTheme, onOpenInAppTab, onSearch }) {
   const [activeTab, setActiveTab] = useState('all');
@@ -62,6 +62,21 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   const sadedeGel = results?.sadedeGel;
   const halkNeDiyor = results?.halkNeDiyor;
   const query = results?.query || '';
+
+  // "Bunu mu demek istediniz?" — sunucudan yazım önerisini al
+  const [didYouMean, setDidYouMean] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    setDidYouMean(null);
+    if (!query || query.trim().length < 3) return;
+
+    fetch(`${API_BASE}/api/search?q=${encodeURIComponent(query)}`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => { if (!cancelled) setDidYouMean(data?.didYouMean || null); })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [query]);
 
   // 🖱️ Akıllı Sağ Tık Listener'ı
   const handleContextMenu = (e) => {
@@ -487,10 +502,24 @@ export default function HybridResults({ results, onRelatedClick, isDark, current
   ];
 
   return (
-    <div 
+    <div
       onContextMenu={handleContextMenu}
       className="w-full max-w-7xl mx-auto px-4 py-4 relative"
     >
+
+      {/* 🔤 Bunu mu demek istediniz? */}
+      {didYouMean && (
+        <div className={`mb-4 text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+          <span className="opacity-70">Bunu mu demek istediniz: </span>
+          <button
+            onClick={() => { sound.playClick(); (onRelatedClick || onSearch)?.(didYouMean); }}
+            className="font-semibold italic underline decoration-dotted underline-offset-4 hover:opacity-80 transition-opacity"
+            style={{ color: currentTheme?.accent || '#38bdf8' }}
+          >
+            {didYouMean}
+          </button>
+        </div>
+      )}
 
       {/* 🖱️ AKILLI SAĞ TIK MENÜSÜ (Smart Context Menu) */}
       {contextMenu && (
