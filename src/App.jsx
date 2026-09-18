@@ -25,7 +25,6 @@ import BusinessAdsModal from './components/BusinessAdsModal';
 import SkeletonLoader from './components/SkeletonLoader';
 import EmptyState from './components/EmptyState';
 import ErrorState from './components/ErrorState';
-import CookieBanner from './components/CookieBanner';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
   getBookmarks, addBookmark, removeBookmark, isBookmarked 
@@ -1106,7 +1105,6 @@ const isElectronApp = () => {
         currentTheme={currentTheme}
       />
 
-      <CookieBanner isDark={isDark} currentTheme={currentTheme} />
     </div>
   );
 }
