@@ -951,9 +951,9 @@ const isElectronApp = () => {
                 isDark ? 'bg-[#08090d]/90' : 'bg-[#f6f7fb]/92'
               }`}
             >
-              <div className="w-full px-3 sm:px-6 flex items-center justify-start gap-2.5 sm:gap-3.5">
+              <div className="w-full max-w-7xl mx-auto px-4 flex items-center justify-start gap-3 sm:gap-4">
                 
-                {/* 🌟 1. EN SOLDA: MİNİMALİST APPLE TARZINDA LOGO VE İSİM */}
+                {/* 🌟 1. AŞAĞIDAKİ KARTLARLA AYNI HİZADA BAŞLAYAN APPLE LOGO VE İSİM */}
                 <button
                   onClick={handleHomeClick}
                   className="flex items-center gap-2 select-none shrink-0 group cursor-pointer active:scale-95 transition-all text-left"
