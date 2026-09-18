@@ -1248,18 +1248,18 @@ app.get('/api/search', (req, res) => {
   try {
     let results = searchLocalDb(query);
 
-    // "Bunu mu demek istediniz?" — sonuç az/yoksa yazım düzeltmesi dene.
-    // Düzeltilmiş sorgu belirgin şekilde daha iyi sonuç veriyorsa onu da döndür.
+    // "Bunu mu demek istediniz?" — sonuç gelse bile öneriyi hesapla.
+    // suggestSpellingCorrection zaten sözlükte bulunan kelimeleri atlar, yani doğru
+    // yazılmış sorgularda maliyeti kelime başına tek indeksli SELECT kadardır.
+    // Öneri yalnızca gerçekten daha iyi sonuç veriyorsa gösterilir.
     let didYouMean = null;
     let correctedResults = null;
-    if (results.length < 3) {
-      const suggestion = suggestSpellingCorrection(query);
-      if (suggestion) {
-        const alternative = searchLocalDb(suggestion);
-        if (alternative.length > results.length) {
-          didYouMean = suggestion;
-          correctedResults = alternative;
-        }
+    const suggestion = suggestSpellingCorrection(query);
+    if (suggestion) {
+      const alternative = searchLocalDb(suggestion);
+      if (alternative.length > results.length) {
+        didYouMean = suggestion;
+        correctedResults = alternative;
       }
     }
 
