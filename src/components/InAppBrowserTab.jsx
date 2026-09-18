@@ -52,7 +52,8 @@ export default function InAppBrowserTab({
   const isElectron = isElectronApp();
   const currentUrl = tab.url || 'https://google.com';
 
-  const isBlocked = isKnownBlockedDomain(currentUrl);
+  // NovaTürk Canlı Proxy Kalkanı sayesinde tüm siteler sekme içinde doğrudan açılır
+  const isBlocked = false;
   const [forceLive, setForceLive] = useState(false);
 
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');

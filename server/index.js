@@ -189,113 +189,6 @@ app.get('/api/proxy', async (req, res) => {
     return res.status(403).send('Yerel ağ adreslerine erişim engellenmiştir.');
   }
 
-  // 🛡️ Web Çerçeveleri (iframe) İle Uyumsuz Yüksek Güvenlikli Platformlar
-  const STRICT_PLATFORMS = [
-    'claude.ai', 'claude.com', 'anthropic.com',
-    'chatgpt.com', 'chat.openai.com', 'openai.com',
-    'perplexity.ai', 'deepseek.com', 'chat.deepseek.com',
-    'gemini.google.com', 'accounts.google.com',
-    'copilot.microsoft.com', 'x.com', 'twitter.com',
-    'instagram.com', 'facebook.com', 'linkedin.com', 'netflix.com',
-    'spotify.com', 'reddit.com', 'discord.com', 'tiktok.com'
-  ];
-
-  if (STRICT_PLATFORMS.some(d => hostname === d || hostname.endsWith('.' + d))) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(`<!DOCTYPE html>
-<html lang="tr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NovaTürk Kalkan • ${hostname}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #050714;
-      color: #f1f5f9;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 24px;
-      text-align: center;
-    }
-    .card {
-      max-width: 480px;
-      width: 100%;
-      padding: 40px 32px;
-      background: rgba(15, 23, 42, 0.75);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 28px;
-      backdrop-filter: blur(20px);
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      color: #34d399;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin-bottom: 20px;
-    }
-    .logo {
-      width: 64px;
-      height: 64px;
-      border-radius: 20px;
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0 auto 20px;
-    }
-    h2 { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 10px; }
-    p { color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 24px; }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      width: 100%;
-      padding: 14px 24px;
-      border-radius: 16px;
-      background: linear-gradient(135deg, #0284c7, #2563eb);
-      color: #fff;
-      text-decoration: none;
-      font-weight: 700;
-      font-size: 14px;
-      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
-      transition: transform 0.2s;
-    }
-    .btn:hover { transform: translateY(-2px); }
-    .note { margin-top: 20px; font-size: 11px; color: #64748b; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="badge">🛡️ Resmî Güvenlik Protokolü</div>
-    <div class="logo">
-      <img src="https://www.google.com/s2/favicons?domain=${hostname}&sz=64" width="36" height="36" alt="${hostname}" onerror="this.style.display='none'">
-    </div>
-    <h2>${hostname}</h2>
-    <p>Bu platform, kullanıcı oturum güvenliği ve Cloudflare bot kalkanı gereği web tarayıcılarında gömülü çerçeve içine alınamaz.</p>
-    <a href="${parsedUrl.href}" target="_blank" rel="noopener noreferrer" class="btn">
-      <span>${hostname}'e Doğrudan Giriş Yap ↗</span>
-    </a>
-    <div class="note">💡 NovaTürk Masaüstü (Electron) uygulamasında tüm kısıtlamalar kaldırılarak doğrudan açılır.</div>
-  </div>
-</body>
-</html>`);
-  }
-
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
@@ -323,6 +216,11 @@ app.get('/api/proxy', async (req, res) => {
       let html = await upstreamRes.text();
       const origin = parsedUrl.origin;
       const baseTag = `<base href="${origin}/">`;
+
+      // Kök-göreceli bağlantı ve varlıkları (src, href, action, poster) tam URL'e dönüştür
+      html = html.replace(/(src|href|action|poster)=["']\/(?!\/)([^"']*)["']/gi, (match, attr, path) => {
+        return `${attr}="${origin}/${path}"`;
+      });
 
       if (/<head[^>]*>/i.test(html)) {
         html = html.replace(/(<head[^>]*>)/i, `$1\n  ${baseTag}`);
@@ -1002,7 +900,29 @@ app.all(['/sw.js', '/service-worker.js', '/worker.js', /^\/workbox-.*\.js$/], (r
   `);
 });
 
-app.all(/^\/_next\/.*/, (req, res) => {
+app.all(/^\/_next\/.*/, async (req, res) => {
+  // Eğer istek bir proxy iframe'i içerisinden geldiyse (Referer: /api/proxy?url=...)
+  const referer = req.headers.referer || '';
+  const match = referer.match(/[?&]url=([^&]+)/);
+  if (match) {
+    try {
+      const upstreamOrigin = new URL(decodeURIComponent(match[1])).origin;
+      const targetAssetUrl = upstreamOrigin + req.url;
+      const upstreamAssetRes = await fetch(targetAssetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      res.setHeader('Content-Type', upstreamAssetRes.headers.get('content-type') || 'application/javascript');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      const buffer = await upstreamAssetRes.arrayBuffer();
+      return res.status(upstreamAssetRes.status).send(Buffer.from(buffer));
+    } catch (err) {
+      console.warn('[Proxy Asset Hatası]', req.url, err.message);
+    }
+  }
+
+  // Normal /_next doğrudan erişimi ise eski Next.js temizleyicisi
   res.setHeader('Clear-Site-Data', '"cache", "storage"');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   if (req.path.endsWith('.json')) {
