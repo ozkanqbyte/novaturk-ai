@@ -5,3 +5,11 @@ scratch/
 .env
 .DS_Store
 Thumbs.db
+
+# Veritabanı dosyası artık git'e commit edilmiyor — canlı sunucudaki veriyi her
+# deploy'da eski bir git anlık görüntüsüyle ezme riski vardı (bu oturumda gerçekten
+# yaşandı, bkz. proje notları). Sunucudaki gerçek veri artık database/backups/ ile korunuyor.
+database/*.db
+database/*.db-shm
+database/*.db-wal
+database/backups/
