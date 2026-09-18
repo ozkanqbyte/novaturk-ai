@@ -210,10 +210,6 @@ class SoundEngine {
       osc.stop(t + 0.16);
     } catch {}
   }
-
-  playSuccess() {
-    this.playChime();
-  }
 }
 
 export const sound = new SoundEngine();

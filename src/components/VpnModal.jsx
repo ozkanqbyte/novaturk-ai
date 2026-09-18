@@ -120,6 +120,15 @@ export default function VpnModal({ isOpen, onClose, onVpnChange, isDark = true }
         </div>
 
         {/* 2. Orta Alan: Fütüristik Güç Şalteri & Canlı Telemetri */}
+        {/* Demo Uyarısı */}
+        <div className="mx-4 mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-amber-300 font-semibold text-sm">⚠️ Demo Özellik</p>
+            <p className="text-amber-200/70 text-xs mt-1">Bu özellik bir tanıtım/simülasyondur. Gerçek bir VPN tüneli oluşturmaz ve trafiğinizi şifrelemez. Gerçek gizlilik koruması için profesyonel bir VPN hizmeti kullanın.</p>
+          </div>
+        </div>
+
         <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Fütüristik Büyük Aç/Kapa Butonu */}
           <div className="flex flex-col items-center justify-center py-4 relative">

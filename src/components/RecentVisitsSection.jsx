@@ -49,7 +49,7 @@ export default function RecentVisitsSection({ history = [], onSelectVisit, onRem
                   <img 
                     src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`} 
                     alt="" 
-                    className="w-3.5 h-3.5 object-contain rounded-xs"
+                    className="w-3.5 h-3.5 object-contain rounded-sm"
                     onError={(e) => { e.target.style.display = 'none'; }}
                   />
                 </div>

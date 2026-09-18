@@ -1408,6 +1408,17 @@ app.get('/api/suggest', (req, res) => {
   }
 });
 
+// Otomatik tamamlama bileşeninin beklediği biçim ({query, score}) — /api/suggest ile aynı kaynak
+app.get('/api/autocomplete', (req, res) => {
+  const prefix = String(req.query.q || '').slice(0, 100);
+  try {
+    const suggestions = getSuggestions(prefix, 8).map((s, i) => ({ query: s.text, score: s.source === 'gecmis' ? 20 : s.source === 'sozluk' ? 10 : 0, rank: i }));
+    res.json({ success: true, suggestions });
+  } catch {
+    res.json({ success: false, suggestions: [] });
+  }
+});
+
 // 3.55 Güvenlik yönetimi (admin): tehdit listesi durumu, elle yenileme, indeksteki şüpheli sayfalar
 app.get('/api/admin/safety', requireAdminKey, (req, res) => {
   res.json({ success: true, ...getSafetyOverview(), suspiciousPages: scanIndexForSpam(30) });

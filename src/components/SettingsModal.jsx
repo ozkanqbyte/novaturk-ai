@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getApiConfig, saveApiConfig } from '../services/searchService';
 import { sound } from '../services/soundService';
+import { getLearningConsent, setLearningConsent } from '../services/learningService';
 
 export const getSavedSettings = () => {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -54,6 +55,7 @@ export default function SettingsModal({ isOpen, onClose, isDark, setIsDark, curr
   const [activeTab, setActiveTab] = useState('search'); // 'search' | 'ai' | 'appearance' | 'privacy'
   const [settings, setSettings] = useState(getSavedSettings);
   const [statusMsg, setStatusMsg] = useState('');
+  const [consent, setConsent] = useState(getLearningConsent);
 
   // API Config State
   const [braveApiKey, setBraveApiKey] = useState('');
@@ -65,6 +67,7 @@ export default function SettingsModal({ isOpen, onClose, isDark, setIsDark, curr
   useEffect(() => {
     if (isOpen) {
       setSettings(getSavedSettings());
+      setConsent(getLearningConsent());
       const apiCfg = getApiConfig();
       setBraveApiKey(apiCfg.braveApiKey || '');
       setSearxngUrl(apiCfg.searxngUrl || 'https://searx.be');
@@ -437,11 +440,40 @@ export default function SettingsModal({ isOpen, onClose, isDark, setIsDark, curr
                 {/* Gizlilik Durumu */}
                 <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 space-y-1">
                   <span className="font-bold flex items-center gap-1.5">
-                    <Shield className="w-4 h-4" /> %100 Sıfır Takipçi Koruması
+                    <Shield className="w-4 h-4" /> Verileriniz reklam verenlere satılmaz
                   </span>
                   <p className="text-[11px] opacity-80 leading-relaxed">
-                    NovaTürk AI IP adresinizi, tarama geçmişinizi veya kimliğinizi reklam verenlere satmaz. Arama geçmişiniz yalnızca kendi tarayıcınızın yerel depolama alanında tutulur.
+                    Arama geçmişiniz kendi cihazınızda tutulur. Aşağıdaki isteğe bağlı anonim katkıyı açarsanız yalnızca arama kelimesi, tıklanan sonuç ve açılan herkese açık sayfa adresi (kimliksiz, IP saklanmadan) sunucuya gönderilir. Gizli sekmelerde hiçbir şey gönderilmez.
                   </p>
+                </div>
+
+                {/* Anonim öğrenme katkısı (isteğe bağlı) */}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.02] divide-y divide-white/10">
+                  {[
+                    { key: 'clicks', title: 'Arama ve tıklama istatistikleri', desc: 'Aradığınız kelime ve tıkladığınız sonuç anonim olarak sıralamayı iyileştirmek için kullanılır.' },
+                    { key: 'browse', title: 'Gezilen sayfaları indekse kat', desc: 'Uygulama içi tarayıcıda açtığınız herkese açık sayfaların adresi (sorgu parametreleri olmadan) gönderilir; sayfayı sunucu kimliksiz olarak kendisi indirir. Giriş, e-posta, banka ve hesap sayfaları hariçtir.' }
+                  ].map(item => (
+                    <div key={item.key} className="flex items-start justify-between gap-4 p-3.5">
+                      <div className="min-w-0">
+                        <span id={`consent-${item.key}-label`} className="text-xs font-semibold block">{item.title}</span>
+                        <span className="text-[11px] opacity-60 leading-relaxed block mt-0.5">{item.desc}</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={consent[item.key]}
+                        aria-labelledby={`consent-${item.key}-label`}
+                        onClick={() => {
+                          sound.playClick();
+                          const next = { clicks: consent.clicks, browse: consent.browse, [item.key]: !consent[item.key] };
+                          setConsent(setLearningConsent(next));
+                        }}
+                        className={`relative shrink-0 w-11 h-6 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${consent[item.key] ? 'bg-emerald-500' : 'bg-white/20'}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${consent[item.key] ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
                 {/* Önbellek ve Geçmişi Temizleme */}

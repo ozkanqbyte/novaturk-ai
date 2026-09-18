@@ -20,15 +20,20 @@ import VpnModal from './components/VpnModal';
 import HistoryModal from './components/HistoryModal';
 import NovaTurkGoogleLogo from './components/NovaTurkGoogleLogo';
 import SponsoredShowcase from './components/SponsoredShowcase';
-import DynamicIsland from './components/DynamicIsland';
 import DealHunterWidget from './components/DealHunterWidget';
 import BusinessAdsModal from './components/BusinessAdsModal';
+import SkeletonLoader from './components/SkeletonLoader';
+import EmptyState from './components/EmptyState';
+import ErrorState from './components/ErrorState';
+import CookieBanner from './components/CookieBanner';
 import { executeSearch, unescapeHtml } from './services/searchService';
 import { 
   getBookmarks, addBookmark, removeBookmark, isBookmarked 
 } from './services/bookmarkService';
 import { getHistory, removeHistoryItem, addSearchHistory, addVisitHistory } from './services/historyService';
 import { getVpnState } from './services/vpnService';
+import { reportClick } from './services/learningService';
+import PrivacyConsentBanner from './components/PrivacyConsentBanner';
 import { sound } from './services/soundService';
 import { getSavedTheme, saveTheme } from './data/themes';
 import { 
@@ -250,7 +255,17 @@ const isElectronApp = () => {
       addVisitHistory(result.link, cleanTitle);
     }
 
-    // 🌐 Canlı Proxy sayesinde web sürümünde de sekme içinde güvenle açılabilir!
+    // Anonim öğrenme sinyali: hangi aramada hangi sonuç tıklandı (izin yoksa / gizli sekmede gönderilmez)
+    reportClick(activeTab.query, result.link, { incognito: !!activeTab.isIncognito });
+
+    // 🌐 Web Sürümünde (Vercel vb. normal tarayıcılarda):
+    // Claude, Google, GitHub vb. modern siteler güvenlik (X-Frame-Options) nedeniyle
+    // iframe içinde 'Bağlanmayı reddetti' hatası verir.
+    // Bu yüzden web tarayıcısında daima güvenle yeni sekmede açılır!
+    if (!isElectronApp()) {
+      window.open(result.link, '_blank', 'noopener,noreferrer');
+      return;
+    }
 
     if (!forceNewTab) {
       // 🌟 GOOGLE CHROME GİBİ: AYNI SEKMEDE AÇ VE GEÇMİŞİ İLERLET!
@@ -551,6 +566,7 @@ const isElectronApp = () => {
     
     sound.playClick();
     const cleanQ = unescapeHtml(queryToSearch.trim());
+    const searchTabId = activeTabId;
     
     // Arama geçmişine ekle (Gizli modda ise ASLA kaydetme!)
     if (!activeTab.isIncognito) {
@@ -559,7 +575,7 @@ const isElectronApp = () => {
     
     // Aktif sekmeyi hemen arama durumuna geçir
     setTabs(prev => prev.map(t => {
-      if (t.id === activeTabId) {
+      if (t.id === searchTabId) {
         const prevHist = t.history || [];
         const prevIdx = typeof t.historyIndex === 'number' ? t.historyIndex : prevHist.length - 1;
         const nextHist = [...prevHist.slice(0, prevIdx + 1), cleanQ];
@@ -569,6 +585,7 @@ const isElectronApp = () => {
           title: `Arama: ${cleanQ.slice(0, 18)}${cleanQ.length > 18 ? '...' : ''}`, 
           isLoading: true, 
           hasSearched: true,
+          error: null,
           history: nextHist,
           historyIndex: nextHist.length - 1
         };
@@ -581,7 +598,7 @@ const isElectronApp = () => {
     try {
       const data = await executeSearch(cleanQ, isDeepSearch);
       setTabs(prev => prev.map(t => {
-        if (t.id === activeTabId) {
+        if (t.id === searchTabId) {
           return { ...t, results: data, isLoading: false };
         }
         return t;
@@ -589,8 +606,8 @@ const isElectronApp = () => {
     } catch (err) {
       console.error('Arama hatası:', err);
       setTabs(prev => prev.map(t => {
-        if (t.id === activeTabId) {
-          return { ...t, isLoading: false };
+        if (t.id === searchTabId) {
+          return { ...t, isLoading: false, error: err.message };
         }
         return t;
       }));
@@ -616,22 +633,6 @@ const isElectronApp = () => {
     }`}>
       {/* 🌟 10 Canlı Cam & Gradient Arka Planı (Arama Sayfasında Görünür) */}
       {activeTab.type === 'search' && <AuroraBackground currentTheme={currentTheme} isDark={isDark} />}
-
-      {/* 🌟 APPLE DYNAMIC ISLAND (HER ZAMAN CANLI, GÖRÜNÜR & ETKİLEŞİMLİ) */}
-      <DynamicIsland 
-        query={activeTab.query}
-        isSearching={activeTab.isLoading}
-        sadedeGel={activeTab.results?.sadedeGel}
-        halkNeDiyor={activeTab.results?.halkNeDiyor}
-        comparison={activeTab.results?.comparison}
-        isDark={isDark}
-        currentTheme={currentTheme}
-        onScrollToTop={() => {
-          const el = document.querySelector('.overflow-y-auto');
-          if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
-      />
 
       {/* 🌟 1. EN TEPEDE APPLE VISIONOS & CHROME TARZI TAM EKRAN SEKME ÇUBUĞU */}
       <BrowserTabBar 
@@ -944,27 +945,11 @@ const isElectronApp = () => {
             {/* Results Content */}
             <div className="flex-1 w-full">
               {activeTab.isLoading ? (
-                <div className="max-w-4xl mx-auto px-4 py-16 flex flex-col items-center justify-center space-y-4">
-                  <div className={`w-9 h-9 rounded-2xl flex items-center justify-center border animate-pulse ${
-                    isDark ? 'bg-white/10 border-white/15' : 'bg-black/5 border-black/10'
-                  }`}>
-                    <Compass className="w-4 h-4 opacity-60" />
-                  </div>
-
-                  <div className="text-center space-y-1">
-                    <h3 className="text-sm font-semibold">
-                      "{activeTab.query}" taranıyor...
-                    </h3>
-                    <p className="text-xs opacity-50 max-w-sm">
-                      50 Türk sitesi ve doğrulanmış kaynaklar taranıyor, saf rapor hazırlanıyor.
-                    </p>
-                  </div>
-
-                  <div className="w-full space-y-2.5 pt-3">
-                    <div className={`h-28 rounded-2xl animate-pulse ${isDark ? 'bg-white/[0.02]' : 'bg-black/[0.02]'}`} />
-                    <div className={`h-20 rounded-2xl animate-pulse ${isDark ? 'bg-white/[0.02]' : 'bg-black/[0.02]'}`} />
-                  </div>
-                </div>
+                <SkeletonLoader isDark={isDark} />
+              ) : activeTab.error ? (
+                <ErrorState error={activeTab.error} isDark={isDark} />
+              ) : activeTab.hasSearched && !activeTab.isLoading && (!activeTab.results || activeTab.results.webResults?.length === 0) ? (
+                <EmptyState query={activeTab.query} isDark={isDark} />
               ) : (
                 <HybridResults 
                   results={activeTab.results} 
@@ -1017,8 +1002,10 @@ const isElectronApp = () => {
         currentTheme={currentTheme}
       />
 
+      <PrivacyConsentBanner />
+
       {/* Admin Masası Konsolu Modalı */}
-      <AdminPanelModal 
+      <AdminPanelModal
         isOpen={isAdminOpen} 
         onClose={() => setIsAdminOpen(false)} 
         isDark={isDark}
@@ -1118,6 +1105,8 @@ const isElectronApp = () => {
         isDark={isDark}
         currentTheme={currentTheme}
       />
+
+      <CookieBanner isDark={isDark} currentTheme={currentTheme} />
     </div>
   );
 }

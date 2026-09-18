@@ -1,82 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame, Camera, Image as ImageIcon, Upload, Clock, TrendingUp } from 'lucide-react';
+import { Search, Mic, MicOff, X, Brain, ArrowRight, Command, Flame } from 'lucide-react';
 import { sound } from '../services/soundService';
-import { API_BASE } from '../services/searchService';
+import AutocompleteDropdown from './AutocompleteDropdown';
 
 export default function SearchBar({ onSearch, isCompact = false, defaultQuery = '', isDeepSearch, setIsDeepSearch, isDark, currentTheme }) {
   const [query, setQuery] = useState(defaultQuery);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const [lensModalOpen, setLensModalOpen] = useState(false);
-  const [lensPreview, setLensPreview] = useState(null);
-  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
-  const [activeSuggestion, setActiveSuggestion] = useState(-1);
-
   const recognitionRef = useRef(null);
   const inputRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const suggestionAbortRef = useRef(null);
 
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
 
   useEffect(() => {
     setQuery(defaultQuery);
   }, [defaultQuery]);
-
-  // Autocomplete — yazarken öneri getir (gecikmeli, eski istekler iptal edilir)
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!isFocused || trimmed.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      suggestionAbortRef.current?.abort();
-      const controller = new AbortController();
-      suggestionAbortRef.current = controller;
-
-      try {
-        const res = await fetch(`${API_BASE}/api/suggest?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal });
-        if (!res.ok) return;
-        const data = await res.json();
-        setSuggestions(data.suggestions || []);
-        setActiveSuggestion(-1);
-      } catch {
-        // istek iptal edildi veya sunucuya ulaşılamadı — öneri göstermemek yeterli
-      }
-    }, 150);
-
-    return () => clearTimeout(timer);
-  }, [query, isFocused]);
-
-  const applySuggestion = (text) => {
-    sound.playClick();
-    setQuery(text);
-    setSuggestions([]);
-    setActiveSuggestion(-1);
-    onSearch?.(text);
-  };
-
-  const handleSuggestionKeys = (e) => {
-    if (suggestions.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveSuggestion(i => (i + 1) % suggestions.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveSuggestion(i => (i <= 0 ? suggestions.length - 1 : i - 1));
-    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
-      e.preventDefault();
-      applySuggestion(suggestions[activeSuggestion].text);
-    } else if (e.key === 'Escape') {
-      setSuggestions([]);
-      setActiveSuggestion(-1);
-    }
-  };
 
   // Global Keyboard Shortcut: Cmd+K / Ctrl+K or '/'
   useEffect(() => {
@@ -121,48 +60,6 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
     }
   }, [onSearch]);
 
-  // 📷 NovaLens: Panodan Görsel Yapıştırma (Ctrl+V) Desteği
-  useEffect(() => {
-    const handlePaste = (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          const file = items[i].getAsFile();
-          if (file) {
-            handleImageFile(file);
-            break;
-          }
-        }
-      }
-    };
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, []);
-
-  const handleImageFile = (file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setLensPreview(e.target.result);
-      setLensModalOpen(true);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleAnalyzeAndSearch = () => {
-    sound.playSearch();
-    setIsAnalyzingImage(true);
-    setTimeout(() => {
-      setIsAnalyzingImage(false);
-      setLensModalOpen(false);
-      // Görsel analizi simülasyonu / Akıllı etiket arama
-      const cleanFileName = 'Görsel Arama Sonuçları & Benzer Nesneler';
-      setQuery(cleanFileName);
-      onSearch(cleanFileName);
-    }, 1200);
-  };
-
   const toggleVoiceSearch = () => {
     sound.playClick();
     if (!speechSupported) {
@@ -202,10 +99,17 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
     setIsDeepSearch(!isDeepSearch);
   };
 
+  const trendingTags = [
+    { label: 'Yapay Zeka 2026', query: '2026 Yapay Zeka Devrimi ve Türkiye' },
+    { label: 'Borsa İstanbul & BIST', query: 'Borsa İstanbul piyasa analizi' },
+    { label: 'TOGG & Yerli İnovasyon', query: 'Türkiye Milli Teknoloji Projeleri' },
+    { label: 'Göbeklitepe Son Bulgular', query: 'Göbeklitepe son arkeolojik bulgular' },
+  ];
+
   return (
     <div className={`w-full transition-all duration-300 ${isCompact ? 'max-w-4xl' : 'max-w-2xl mx-auto'}`}>
       <form onSubmit={handleSubmit} className="relative w-full">
-        {/* Apple Dynamic Search Capsule */}
+        {/* Apple VisionOS Minimalist Dynamic Search Capsule */}
         <div 
           style={{
             borderColor: isFocused ? themeAccent : undefined,
@@ -216,7 +120,7 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
           className="apple-search-capsule rounded-full p-2 flex items-center gap-2.5 transition-all duration-300"
         >
           
-          {/* Search Icon */}
+          {/* Search Icon with Dynamic Focus Accent */}
           <div 
             style={{ color: isFocused ? themeAccent : undefined }}
             className="pl-2.5 flex items-center justify-center opacity-70 transition-colors"
@@ -229,11 +133,11 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             ref={inputRef}
             type="text"
             value={query}
+            aria-label="Arama sorgusu girin"
+            autoFocus={!isCompact}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setTimeout(() => setIsFocused(false), 150)}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleSuggestionKeys}
-            autoComplete="off"
             placeholder={
               isListening 
                 ? 'Sizi dinliyorum, konuşun...' 
@@ -259,31 +163,12 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             <button
               type="button"
               onClick={handleClear}
+              aria-label="Aramayı temizle"
               className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 opacity-60 hover:opacity-100 transition-opacity"
             >
               <X className="w-4 h-4" />
             </button>
           )}
-
-          {/* 📷 NovaLens Butonu (Resimle Arama) */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playClick();
-              fileInputRef.current?.click();
-            }}
-            title="NovaLens: Görsel ile Ara veya Yapıştır (Ctrl+V)"
-            className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 opacity-70 hover:opacity-100 transition-all hover:text-sky-400"
-          >
-            <Camera className="w-4 h-4" />
-          </button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={(e) => handleImageFile(e.target.files?.[0])} 
-            accept="image/*" 
-            className="hidden" 
-          />
 
           {/* Voice Search Button */}
           {speechSupported && (
@@ -291,6 +176,7 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
               type="button"
               onClick={toggleVoiceSearch}
               title={isListening ? 'Kaydı Durdur' : 'Türkçe Sesli Arama'}
+              aria-label="Sesli arama"
               className={`p-2 rounded-full transition-all ${
                 isListening
                   ? 'bg-rose-500 text-white animate-pulse'
@@ -306,6 +192,7 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
             type="button"
             onClick={handleDeepToggle}
             title="Derin Düşünce Modu"
+            aria-label="Derin araştırma modunu aç/kapat"
             style={isDeepSearch ? {
               backgroundColor: themeAccent,
               borderColor: themeAccent,
@@ -317,105 +204,56 @@ export default function SearchBar({ onSearch, isCompact = false, defaultQuery = 
                 : isDark ? 'border-white/10 opacity-70 hover:opacity-100' : 'border-black/10 opacity-70 hover:opacity-100'
             }`}
           >
-            <Brain className={`w-3.5 h-3.5 ${isDeepSearch ? 'animate-pulse' : ''}`} />
-            <span>Derin</span>
+            <Brain className="w-3.5 h-3.5" />
+            <span>Derin Düşünce</span>
           </button>
 
-          {/* Submit Action Button */}
+          {/* Submit Button */}
           <button
             type="submit"
-            style={{ backgroundColor: themeAccent }}
-            className="p-2.5 rounded-full text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center justify-center shrink-0"
+            disabled={!query.trim()}
+            aria-label="Ara"
+            style={query.trim() ? {
+              backgroundColor: isDark ? '#ffffff' : '#0f172a',
+              color: isDark ? '#000000' : '#ffffff'
+            } : {}}
+            className="apple-primary-btn flex items-center justify-center w-9 h-9 rounded-full shadow-sm disabled:opacity-30 disabled:pointer-events-none transition-all"
           >
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4 stroke-[2.5]" />
           </button>
-
         </div>
 
-        {/* 🔎 Autocomplete — yazarken öneriler */}
-        {isFocused && suggestions.length > 0 && (
-          <div
-            className={`absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl border overflow-hidden shadow-2xl backdrop-blur-xl ${
-              isDark ? 'bg-[#0c0f17]/95 border-white/10' : 'bg-white/95 border-black/10'
-            }`}
-          >
-            {suggestions.map((suggestion, index) => (
-              <button
-                key={suggestion.text}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); applySuggestion(suggestion.text); }}
-                onMouseEnter={() => setActiveSuggestion(index)}
-                className={`w-full px-4 py-2.5 flex items-center gap-3 text-left text-sm transition-colors ${
-                  index === activeSuggestion
-                    ? (isDark ? 'bg-white/10' : 'bg-black/5')
-                    : ''
-                } ${isDark ? 'text-slate-200' : 'text-slate-800'}`}
-              >
-                {suggestion.source === 'gecmis'
-                  ? <Clock className="w-3.5 h-3.5 opacity-50 shrink-0" />
-                  : suggestion.source === 'sozluk'
-                    ? <TrendingUp className="w-3.5 h-3.5 opacity-50 shrink-0" />
-                    : <Search className="w-3.5 h-3.5 opacity-50 shrink-0" />}
-                <span className="truncate">{suggestion.text}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        <AutocompleteDropdown
+          query={query}
+          isVisible={isFocused && query.trim().length >= 2}
+          isDark={isDark}
+          currentTheme={currentTheme}
+          onSelect={(text) => {
+            sound.playClick();
+            setQuery(text);
+            setIsFocused(false);
+            onSearch?.(text);
+          }}
+        />
       </form>
 
-      {/* 📷 NovaLens Görsel Yükleme / Arama Modalı */}
-      {lensModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fadeIn">
-          <div className={`w-full max-w-md rounded-3xl p-6 border shadow-2xl space-y-4 ${
-            isDark ? 'bg-slate-900 border-white/10 text-white' : 'bg-white border-black/10 text-slate-900'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Camera className="w-5 h-5 text-sky-400" />
-                <h3 className="font-bold text-sm">NovaLens • Canlı Görsel Arama</h3>
-              </div>
-              <button 
-                onClick={() => setLensModalOpen(false)}
-                className="p-1 rounded-full hover:bg-white/10 opacity-60"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {lensPreview && (
-              <div className="rounded-2xl overflow-hidden aspect-video border border-white/10 bg-black/20 flex items-center justify-center relative">
-                <img src={lensPreview} alt="NovaLens Önizleme" className="w-full h-full object-contain" />
-                {isAnalyzingImage && (
-                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2">
-                    <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs font-medium text-sky-300">Görsel Analiz Ediliyor...</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <p className="text-xs opacity-70">
-              Yüklenen görsel yapay zeka ile taranıp benzer kaynaklar ve ürünler getirilecektir.
-            </p>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setLensModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs opacity-70 hover:opacity-100"
-              >
-                Vazgeç
-              </button>
-              <button
-                onClick={handleAnalyzeAndSearch}
-                disabled={isAnalyzingImage}
-                style={{ backgroundColor: themeAccent }}
-                className="px-5 py-2 rounded-xl text-xs font-semibold text-white shadow-md hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>Görseli Ara</span>
-              </button>
-            </div>
-          </div>
+      {/* Minimalist Trending Pills */}
+      {!isCompact && (
+        <div className="mt-5 flex flex-wrap justify-center items-center gap-2 text-xs opacity-80">
+          <span className="opacity-60 text-[11px]">Gündem:</span>
+          {trendingTags.map((tag, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                sound.playClick();
+                setQuery(tag.query);
+                onSearch(tag.query);
+              }}
+              className="apple-pill-btn px-3 py-1 rounded-full text-xs hover:border-white/20 transition-all"
+            >
+              {tag.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

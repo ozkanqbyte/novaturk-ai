@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { Plus, X, Globe, Star, ExternalLink, Sparkles } from 'lucide-react';
 import { sound } from '../services/soundService';
 
@@ -54,7 +54,7 @@ export default function SpeedDialGrid({
                     ? `0 8px 25px -5px rgba(0,0,0,0.5), 0 0 15px ${themeAccent}10` 
                     : `0 8px 25px -5px rgba(0,0,0,0.08)`
                 }}
-                className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1 relative overflow-hidden backdrop-blur-xl ${
+                className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1 relative overflow-hidden backdrop-blur-xl ${
                   isDark 
                     ? 'bg-white/[0.05] border-white/12 group-hover:border-white/30 group-hover:bg-white/[0.1]' 
                     : 'bg-white/80 border-black/10 group-hover:border-black/20 group-hover:bg-white shadow-sm'
@@ -106,7 +106,7 @@ export default function SpeedDialGrid({
           }}
           className="group flex flex-col items-center text-center cursor-pointer transition-all"
         >
-          <div className={`w-13 h-13 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border border-dashed transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1 backdrop-blur-xl ${
+          <div className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center border border-dashed transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1 backdrop-blur-xl ${
             isDark 
               ? 'border-white/20 bg-white/[0.02] text-slate-400 group-hover:text-white group-hover:border-white/40 group-hover:bg-white/[0.05]' 
               : 'border-black/20 bg-black/[0.02] text-slate-500 group-hover:text-black group-hover:border-black/40 group-hover:bg-black/[0.05]'

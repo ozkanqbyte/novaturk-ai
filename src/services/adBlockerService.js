@@ -3,9 +3,9 @@
 const STATS_KEY = 'novaturk_adblock_stats';
 
 const DEFAULT_STATS = {
-  totalBlocked: 142,
-  bandwidthSavedMB: 18.4,
-  timeSavedSeconds: 12.6,
+  totalBlocked: 0,
+  bandwidthSavedMB: 0,
+  timeSavedSeconds: 0,
   isShieldEnabled: true,
   blockPopups: true,
   blockTrackers: true,

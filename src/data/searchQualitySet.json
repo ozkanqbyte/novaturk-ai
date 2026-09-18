@@ -1,0 +1,12 @@
+[
+  { "id": "public-services", "query": "e devlet adli sicil belgesi", "expectedDomains": ["turkiye.gov.tr"] },
+  { "id": "science", "query": "tübitak ar ge projeleri", "expectedDomains": ["tubitak.gov.tr"] },
+  { "id": "education", "query": "yks sınav sonuçları", "expectedDomains": ["osym.gov.tr"] },
+  { "id": "academic", "query": "hakemli akademik dergiler", "expectedDomains": ["dergipark.org.tr"] },
+  { "id": "law", "query": "resmi gazete kanun kararları", "expectedDomains": ["resmigazete.gov.tr"] },
+  { "id": "consumer-price", "query": "ürün fiyat karşılaştırma", "expectedDomains": ["akakce.com", "cimri.com"] },
+  { "id": "history", "query": "göbeklitepe arkeoloji haberleri", "expectedDomains": ["arkeofili.com"] },
+  { "id": "research", "query": "yüksek lisans doktora tezleri", "expectedDomains": ["tez.yok.gov.tr"] },
+  { "id": "education-ministry", "query": "müfredat öğrenci rehberleri", "expectedDomains": ["meb.gov.tr"] },
+  { "id": "global-science", "query": "NASA uzay bilim misyonları", "expectedDomains": ["nasa.gov"] }
+]
