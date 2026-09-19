@@ -33,7 +33,10 @@ import {
 import { getHistory, removeHistoryItem, addSearchHistory, addVisitHistory } from './services/historyService';
 import { getVpnState } from './services/vpnService';
 import { sound } from './services/soundService';
-import { getSavedTheme, saveTheme } from './data/themes';
+import { getSavedTheme, saveTheme, THEMES } from './data/themes';
+import AuthModal from './components/AuthModal';
+import AccountButton from './components/AccountButton';
+import { fetchAccountConfig, fetchMe, logoutAccount, fetchAccountSettings, saveAccountSettings } from './services/accountService';
 import { 
   ShieldCheck, Server, Compass, 
   BookOpen, Bot, Palette
@@ -42,6 +45,10 @@ import {
 export default function App() {
   const [isDeepSearch, setIsDeepSearch] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [account, setAccount] = useState(null);
+  const [accountConfig, setAccountConfig] = useState({ googleEnabled: false });
+  const [authMode, setAuthMode] = useState(null); // null | 'login' | 'register'
+  const settingsReady = useRef(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [isAddBookmarkOpen, setIsAddBookmarkOpen] = useState(false);
@@ -246,6 +253,56 @@ export default function App() {
       window.removeEventListener('click', handleGlobalClickToDeselect);
     };
   }, []);
+
+  // 👤 Hesap: açılışta oturumu kontrol et, giriş yapılmışsa ayarları hesaptan uygula
+  const applyAccountSettings = async () => {
+    const remote = await fetchAccountSettings();
+    const theme = remote?.themeId ? THEMES.find(t => t.id === remote.themeId) : null;
+    if (theme) {
+      setCurrentTheme(theme);
+      saveTheme(theme.id);
+      setIsDark(typeof remote.isDark === 'boolean' ? remote.isDark : theme.isDark);
+    } else {
+      // Hesapta henüz ayar yok: bu cihazdaki ayarı hesaba yaz
+      await saveAccountSettings({ themeId: currentTheme.id, isDark });
+    }
+    settingsReady.current = true;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAccountConfig().then(c => { if (!cancelled) setAccountConfig(c); });
+    fetchMe().then(async (u) => {
+      if (cancelled || !u) return;
+      setAccount(u);
+      await applyAccountSettings();
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Giriş yapılmışsa tema/koyu mod değişince hesaba kaydet
+  useEffect(() => {
+    if (account && settingsReady.current) {
+      saveAccountSettings({ themeId: currentTheme.id, isDark });
+    }
+  }, [account, currentTheme.id, isDark]);
+
+  const handleAuthSuccess = async (user) => {
+    setAccount(user);
+    setAuthMode(null);
+    await applyAccountSettings();
+  };
+
+  const handleLogout = async () => {
+    await logoutAccount();
+    settingsReady.current = false;
+    setAccount(null);
+  };
+
+  const accountButton = (
+    <AccountButton user={account} onOpenAuth={setAuthMode} onLogout={handleLogout} isDark={isDark} />
+  );
 
   // Canlı Tema Seçimi
   const handleSelectTheme = (theme) => {
@@ -775,6 +832,7 @@ const isElectronApp = () => {
         onOpenThemeSelector={() => setIsThemeModalOpen(true)}
         onOpenVpnModal={() => { setVpnState(getVpnState()); setIsVpnOpen(true); }}
         onOpenHistory={() => setIsHistoryOpen(true)}
+        accountSlot={accountButton}
         isVpnActive={vpnState.isActive}
         isDark={isDark}
         setIsDark={setIsDark}
@@ -1101,6 +1159,15 @@ const isElectronApp = () => {
       />
 
       {/* 🌟 10 Renkli Cam Teması Seçim Modalı (Canlı Önizleme) */}
+      <AuthModal
+        isOpen={authMode !== null}
+        initialMode={authMode || 'login'}
+        googleEnabled={accountConfig.googleEnabled}
+        onClose={() => setAuthMode(null)}
+        onSuccess={handleAuthSuccess}
+        isDark={isDark}
+      />
+
       <ThemeSelectorModal 
         isOpen={isThemeModalOpen}
         onClose={() => setIsThemeModalOpen(false)}
@@ -1215,6 +1282,7 @@ const isElectronApp = () => {
         onOpenAdmin={() => setIsAdminOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        accountSlot={accountButton}
         isVpnActive={vpnState.isActive}
         isDark={isDark}
         setIsDark={setIsDark}

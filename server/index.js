@@ -10,6 +10,7 @@ import { db, initDatabase, searchLocalDb, getCachedQuery, saveCachedQuery, getCa
 import { crawlSite, runBatchCrawler, crawlerState, getOrCreateSiteId, isDomainBlocked } from './crawler.js';
 import { ingestAllNewsFeeds, getActiveRssSources } from './rssFeeds.js';
 import { registerMediaRoutes } from './media.js';
+import { registerAuthRoutes } from './auth.js';
 import { initSafetyTables, refreshThreatFeeds, filterUnsafeResults, getSafetyOverview, scanIndexForSpam, checkThreat } from './safety.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,7 @@ async function assertSafeCrawlUrl(rawUrl) {
 initDatabase();
 initSafetyTables();
 registerMediaRoutes(app, { db, assertSafeCrawlUrl });
+registerAuthRoutes(app, { db, express });
 
 // 🛡️ Güvenlik filtreli arama: bilinen zararlı adresler sonuçtan çıkar, spam puanı
 // yüksek sayfalar düşer, orta düzey spam sıralamada cezalandırılır.

@@ -19,6 +19,7 @@ export default function BrowserTabBar({
   onOpenThemeSelector,
   onOpenVpnModal,
   onOpenHistory,
+  accountSlot,
   isVpnActive = false,
   isDark,
   setIsDark,
@@ -183,6 +184,8 @@ export default function BrowserTabBar({
             ? 'bg-white/[0.04] border-white/[0.08] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]' 
             : 'bg-black/[0.03] border-black/[0.06] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)]'
         }`}>
+          {accountSlot}
+
           <button
             onClick={() => {
               sound.playClick();

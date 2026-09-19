@@ -17,7 +17,8 @@ export default function MobileTopBar({
   isDark,
   setIsDark,
   currentTheme,
-  showHomeButton = false
+  showHomeButton = false,
+  accountSlot
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const themeAccent = currentTheme?.accent || (isDark ? '#38bdf8' : '#0284c7');
@@ -51,7 +52,9 @@ export default function MobileTopBar({
           <div /> /* Boşluk tutucu */
         )}
 
-        {/* Sağ: Ayarlar & Kontrol Merkezi Butonu */}
+        {/* Sağ: Hesap + Ayarlar & Kontrol Merkezi Butonu */}
+        <div className="pointer-events-auto flex items-center gap-2">
+        {accountSlot}
         <button
           onClick={() => {
             sound.playClick();
@@ -65,6 +68,7 @@ export default function MobileTopBar({
         >
           <Settings className="w-4 h-4 text-sky-400 animate-spin-slow" />
         </button>
+        </div>
       </div>
 
       {/* 🌟 Açılır Apple VisionOS Mobil Kontrol Merkezi (Action Sheet) */}
