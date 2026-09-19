@@ -7,11 +7,17 @@ import { generateAgentSwarmData } from './agentService.js';
 import { resolveNavigationalIntent } from './navigationalService.js';
 import { generateIntelligenceInsights } from './aiIntelligenceService.js';
 
-export const API_BASE = import.meta.env.VITE_API_URL || (
-  typeof window !== 'undefined' && window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1') && !window.location.hostname.includes('onrender.com')
-    ? 'https://novaturk-ai.onrender.com'
-    : (import.meta.env.DEV ? 'http://localhost:3001' : '')
-);
+// API adresi: varsayılan olarak SAYFANIN KENDİ SUNUCUSU (aynı origin).
+// Önceden localhost dışındaki her host için sabit olarak Render'a gidiliyordu; bu yüzden
+// uygulama kendi sunucusunda (ör. VPS) çalışırken bile istekleri başka bir sunucuya
+// yolluyordu ve oradaki eski sürümde olmayan uçlar (autocomplete gibi) bulunamıyordu.
+// Yalnızca backend'i olmayan statik dağıtımda (Vercel) uzak API'ye gidilir.
+export const API_BASE = import.meta.env.VITE_API_URL || (() => {
+  if (typeof window === 'undefined') return '';
+  if (import.meta.env.DEV) return 'http://localhost:3001';
+  if (window.location.hostname.includes('vercel.app')) return 'https://novaturk-ai.onrender.com';
+  return ''; // aynı origin — sayfayı sunan sunucu API'yi de sunuyor
+})();
 
 export const getApiConfig = () => {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {

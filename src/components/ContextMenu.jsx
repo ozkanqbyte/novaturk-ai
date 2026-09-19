@@ -5,6 +5,8 @@ import {
   Code2, Terminal, Image, Download, Info, MousePointer
 } from 'lucide-react';
 import { sound } from '../services/soundService';
+import { copyText, readClipboardText, insertIntoField } from '../services/clipboardService';
+import { downloadImage } from './ImagesPanel';
 
 export default function ContextMenu({ 
   menuData, 
@@ -38,6 +40,12 @@ export default function ContextMenu({
     };
   }, [onClose]);
 
+  // Kullanıcıya sonucu göster (menü hemen kapanırsa "oldu mu, olmadı mı" belli olmaz)
+  const finish = (message, delay = 900) => {
+    setToastMessage(message);
+    setTimeout(() => { setToastMessage(''); onClose(); }, delay);
+  };
+
   if (!menuData || !menuData.visible) return null;
 
   // Ekran sınırlarını aşmasını engelle
@@ -50,37 +58,48 @@ export default function ContextMenu({
 
   const handleCopy = async () => {
     sound.playClick();
-    if (selectedText) {
-      try { await navigator.clipboard.writeText(selectedText); } catch {}
-    } else {
-      document.execCommand('copy');
+    const text = selectedText || window.getSelection()?.toString() || '';
+    if (text) {
+      finish((await copyText(text)) ? '✓ Kopyalandı' : 'Kopyalanamadı — Ctrl+C deneyin');
+      return;
     }
-    onClose();
+    // Seçili metin yok: odaktaki alanda seçim varsa onu kopyala
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.selectionEnd > el.selectionStart) {
+      const picked = el.value.slice(el.selectionStart, el.selectionEnd);
+      finish((await copyText(picked)) ? '✓ Kopyalandı' : 'Kopyalanamadı — Ctrl+C deneyin');
+      return;
+    }
+    finish('Kopyalanacak seçili metin yok', 1200);
   };
 
   const handlePaste = async () => {
     sound.playClick();
-    try {
-      const text = await navigator.clipboard.readText();
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
-        const start = activeEl.selectionStart || 0;
-        const end = activeEl.selectionEnd || 0;
-        const val = activeEl.value || '';
-        activeEl.value = val.slice(0, start) + text + val.slice(end);
-        activeEl.selectionStart = activeEl.selectionEnd = start + text.length;
-        activeEl.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    } catch {
-      document.execCommand('paste');
+    const text = await readClipboardText();
+    const el = document.activeElement;
+    const isField = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+    if (text === null) {
+      finish('Tarayıcı panoya erişime izin vermedi — Ctrl+V kullanın', 2200);
+    } else if (!isField) {
+      finish('Yapıştırmak için önce bir yazı alanına tıklayın', 1800);
+    } else {
+      insertIntoField(el, text);
+      finish('✓ Yapıştırıldı');
     }
-    onClose();
   };
 
-  const handleCut = () => {
+  const handleCut = async () => {
     sound.playClick();
-    document.execCommand('cut');
-    onClose();
+    const el = document.activeElement;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.selectionEnd > el.selectionStart) {
+      const picked = el.value.slice(el.selectionStart, el.selectionEnd);
+      if (await copyText(picked)) {
+        insertIntoField(el, ''); // seçili aralığı siler
+        finish('✓ Kesildi');
+        return;
+      }
+    }
+    finish('Kesmek için bir yazı alanında metin seçin', 1500);
   };
 
   // 🌟 Tümünü Seç (Mavi kilitlenmeyi önler)
@@ -109,10 +128,7 @@ export default function ContextMenu({
 
   const handleCopyLink = async () => {
     sound.playClick();
-    if (linkUrl) {
-      try { await navigator.clipboard.writeText(linkUrl); } catch {}
-    }
-    onClose();
+    finish(linkUrl && (await copyText(linkUrl)) ? '✓ Bağlantı kopyalandı' : 'Kopyalanamadı');
   };
 
   const handleSearchSelection = () => {
@@ -143,11 +159,25 @@ export default function ContextMenu({
   };
 
   // 📄 2. Sayfa Kaynağını Görüntüle (Ctrl+U)
-  const handleViewSource = () => {
+  const handleViewSource = async () => {
     sound.playClick();
     const target = linkUrl || window.location.href;
-    window.open(`view-source:${target}`, '_blank');
-    onClose();
+    if (window.electron) {
+      window.open(`view-source:${target}`, '_blank');
+      onClose();
+      return;
+    }
+    try {
+      const url = new URL(target, window.location.href);
+      if (url.origin !== window.location.origin) throw new Error('cross-origin');
+      const html = await (await fetch(url.href)).text();
+      const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/plain;charset=utf-8' }));
+      window.open(blobUrl, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      onClose();
+    } catch {
+      finish('Başka sitenin kaynağı buradan açılamaz — sayfada Ctrl+U kullanın', 2600);
+    }
   };
 
   // 🌐 3. Google'da Ara
@@ -238,13 +268,24 @@ export default function ContextMenu({
           <button
             onClick={async () => {
               sound.playClick();
-              try { await navigator.clipboard.writeText(srcUrl); } catch {}
-              onClose();
+              finish((await copyText(srcUrl)) ? '✓ Resim adresi kopyalandı' : 'Kopyalanamadı');
             }}
             className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-left hover:bg-white/10 transition-colors"
           >
             <Copy className="w-3.5 h-3.5 opacity-70" />
             <span>Resim Adresini Kopyala</span>
+          </button>
+          <button
+            onClick={async () => {
+              sound.playClick();
+              setToastMessage('İndiriliyor…');
+              const ok = await downloadImage({ fullImage: srcUrl, title: 'novaturk-gorsel' });
+              finish(ok ? '✓ Resim indirildi' : 'İndirilemedi — resmi yeni sekmede açıp kaydedin', ok ? 900 : 2200);
+            }}
+            className="w-full px-2.5 py-1.5 rounded-lg flex items-center gap-2 text-left hover:bg-white/10 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5 opacity-70" />
+            <span>Resmi İndir</span>
           </button>
           <div className="h-px bg-white/10 my-1" />
         </>

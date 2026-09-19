@@ -221,7 +221,7 @@ export default function InAppBrowserTab({
   useEffect(() => {
     if (typeof window !== 'undefined' && window.electron?.onGoogleLoginCompleted) {
       const unsubscribe = window.electron.onGoogleLoginCompleted((userData) => {
-        setConnectedUser(userData || { name: 'Özkan Akçay' });
+        setConnectedUser(userData || { name: 'Kullanıcı' });
         setIsWaitingChrome(false);
         sound.playSuccess();
         try {
@@ -237,6 +237,44 @@ export default function InAppBrowserTab({
       };
     }
   }, [onUpdateTab, tab.id, iframeRef]);
+
+  // Web tarayıcısı (Electron OLMADAN) için giriş akışı: /auth/google/start yeni sekmede açılır,
+  // sonra durum periyodik kontrol edilir. Önceden bu buton web'de hiçbir şey yapmıyordu —
+  // tıklanınca sonsuza kadar "bekleniyor" yazıyordu.
+  useEffect(() => {
+    const isElectronRuntime = typeof window !== 'undefined' && !!window.electron?.openGoogleLogin;
+    if (isElectronRuntime || !isWaitingChrome) return;
+
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > 120) { // ~90 saniye zaman aşımı
+        clearInterval(interval);
+        setIsWaitingChrome(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/google/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.authenticated && data.user) {
+            clearInterval(interval);
+            setConnectedUser(data.user);
+            setIsWaitingChrome(false);
+            sound.playSuccess();
+            try {
+              confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
+            } catch (e) {}
+            setTimeout(() => {
+              navigateToYouTube();
+            }, 1500);
+          }
+        }
+      } catch (e) {}
+    }, 750);
+
+    return () => clearInterval(interval);
+  }, [isWaitingChrome]);
 
   // SponsorBlock ve Reklam Atlayıcı Enjeksiyonu (Electron Webview)
   useEffect(() => {
@@ -470,6 +508,9 @@ export default function InAppBrowserTab({
                         setIsWaitingChrome(true);
                         if (window.electron?.openGoogleLogin) {
                           window.electron.openGoogleLogin();
+                        } else {
+                          fetch(`${API_BASE}/api/auth/google/reset`, { method: 'POST' }).catch(() => {});
+                          window.open(`${API_BASE}/auth/google/start?target=youtube`, '_blank', 'width=480,height=720');
                         }
                       }}
                       className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-sm shadow-xl shadow-blue-500/20 hover:scale-[1.02] active:scale-100 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75"

@@ -5,6 +5,8 @@ import {
   Sparkles, Image as ImageIcon, Share2, Info, CheckCircle2
 } from 'lucide-react';
 import { sound } from '../services/soundService';
+import { downloadImage } from './ImagesPanel';
+import { copyText } from '../services/clipboardService';
 
 export default function ImageDetailModal({
   isOpen,
@@ -19,6 +21,7 @@ export default function ImageDetailModal({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [downloadState, setDownloadState] = useState('');
 
   // Aktif görselin indexi
   const currentIndex = images.findIndex(img => (img.id && img.id === image?.id) || img.thumb === image?.thumb || img.url === image?.url);
@@ -70,37 +73,26 @@ export default function ImageDetailModal({
 
   if (!isOpen || !image) return null;
 
-  const activeSrc = image.url || image.thumb;
+  const activeSrc = image.fullImage || image.url || image.thumb;
   const displayTitle = image.title || 'Fotoğraf Detayı';
   const displaySource = image.source || 'Wikimedia Commons';
   const resolutionText = image.width && image.height ? `${image.width} × ${image.height}` : (image.dimensions || 'HD Çözünürlük');
 
   // Bağlantıyı kopyala
-  const handleCopy = () => {
+  const handleCopy = async () => {
     sound.playClick();
-    navigator.clipboard.writeText(activeSrc);
-    setCopied(true);
+    const ok = await copyText(activeSrc);
+    setCopied(ok);
     setTimeout(() => setCopied(false), 2000);
   };
 
   // İndir
   const handleDownload = async () => {
     sound.playClick();
-    try {
-      const response = await fetch(activeSrc);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      const cleanName = displayTitle.toLowerCase().replace(/[^a-z0-9]/gi, '-').slice(0, 40);
-      link.download = `novaturk-${cleanName || 'gorsel'}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    } catch {
-      window.open(activeSrc, '_blank');
-    }
+    setDownloadState('İndiriliyor…');
+    const ok = await downloadImage({ ...image, fullImage: activeSrc, title: displayTitle });
+    setDownloadState(ok ? '✓ İndirildi' : 'İndirilemedi');
+    setTimeout(() => setDownloadState(''), 2000);
   };
 
   // Tam ekran modu toggle
@@ -181,10 +173,12 @@ export default function ImageDetailModal({
           {/* İndir */}
           <button
             onClick={handleDownload}
-            title="Görseli HD İndir"
-            className="p-2 rounded-full hover:bg-white/15 text-slate-200 transition-colors"
+            title={downloadState || "Görseli İndir"}
+            disabled={downloadState === "İndiriliyor…"}
+            className="p-2 rounded-full hover:bg-white/15 text-slate-200 transition-colors flex items-center gap-1.5 disabled:opacity-60"
           >
-            <Download className="w-4 h-4" />
+            <Download className={`w-4 h-4 ${downloadState === "İndiriliyor…" ? "animate-pulse" : ""}`} />
+            {downloadState && <span className="text-[11px] font-semibold">{downloadState}</span>}
           </button>
 
           {/* Bağlantıyı Kopyala */}
@@ -197,9 +191,9 @@ export default function ImageDetailModal({
           </button>
 
           {/* Orijinal Sayfada Aç */}
-          {image.descriptionUrl || image.url ? (
+          {image.descriptionUrl || image.sourceUrl || image.url ? (
             <a
-              href={image.descriptionUrl || image.url}
+              href={image.descriptionUrl || image.sourceUrl || image.url}
               target="_blank"
               rel="noopener noreferrer"
               title="Orijinal Kaynak Sayfasında Aç"

@@ -1,4 +1,28 @@
 import { db } from './db.js';
+import { checkThreat, assessSpam, SPAM_DROP_THRESHOLD } from './safety.js';
+
+// Admin panelinden yasaklanmış bir domain mi? (blocked_domains tablosu)
+export function isDomainBlocked(hostname) {
+  return !!db.prepare('SELECT 1 FROM blocked_domains WHERE domain = ?').get(hostname);
+}
+
+// URL'nin gerçek hostname'ine göre doğru site_id'yi bulur, yoksa otomatik keşif olarak oluşturur.
+// (Önceden her keşfedilen sayfa, hangi siteden geldiğine bakılmaksızın site_id=1'e yazılıyordu.)
+// Yasaklı bir domain ise null döner — çağıran taraf bu sayfayı index'e eklememelidir.
+export function getOrCreateSiteId(hostname) {
+  if (isDomainBlocked(hostname)) return null;
+
+  const existing = db.prepare('SELECT id FROM sites WHERE domain = ?').get(hostname);
+  if (existing) return existing.id;
+
+  db.prepare(`
+    INSERT OR IGNORE INTO sites (domain, name, category, url, description, authority_score, is_verified)
+    VALUES (?, ?, ?, ?, ?, ?, 1)
+  `).run(hostname, hostname, 'Otomatik Keşif', `https://${hostname}`, `${hostname} - otomatik keşfedilen site`, 70);
+
+  const created = db.prepare('SELECT id FROM sites WHERE domain = ?').get(hostname);
+  return created ? created.id : null;
+}
 
 // İlerleme Durumu Takibi
 export const crawlerState = {
@@ -13,6 +37,57 @@ export const crawlerState = {
 
 // Dosya Uzantısı Filtresi (Görsel, medya vb. atlanır)
 const IGNORED_EXTENSIONS = /\.(jpg|jpeg|png|gif|webp|svg|pdf|zip|tar|gz|mp4|mp3|avi|mov|exe|dmg|iso|css|js|woff|woff2|ttf|eot)$/i;
+
+// robots.txt Önbelleği (origin -> { disallowed, fetchedAt })
+const ROBOTS_CACHE = new Map();
+const ROBOTS_TTL_MS = 30 * 60 * 1000; // 30 dakika
+
+function parseRobotsTxt(text) {
+  const lines = text.split('\n').map(l => l.trim());
+  const disallowed = [];
+  let appliesToUs = false;
+
+  for (const line of lines) {
+    if (/^user-agent:/i.test(line)) {
+      const agent = line.split(':').slice(1).join(':').trim();
+      appliesToUs = agent === '*' || agent.toLowerCase().includes('novaturkbot');
+    } else if (appliesToUs && /^disallow:/i.test(line)) {
+      const rulePath = line.split(':').slice(1).join(':').trim();
+      if (rulePath) disallowed.push(rulePath);
+    }
+  }
+  return disallowed;
+}
+
+async function getDisallowedPaths(origin) {
+  const cached = ROBOTS_CACHE.get(origin);
+  if (cached && Date.now() - cached.fetchedAt < ROBOTS_TTL_MS) {
+    return cached.disallowed;
+  }
+
+  let disallowed = [];
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${origin}/robots.txt`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'NovaTurkBot/2.0' }
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      disallowed = parseRobotsTxt(await res.text());
+    }
+  } catch {
+    disallowed = []; // robots.txt okunamıyorsa varsayılan: tarama engellenmez
+  }
+
+  ROBOTS_CACHE.set(origin, { disallowed, fetchedAt: Date.now() });
+  return disallowed;
+}
+
+function isPathAllowed(pathname, disallowed) {
+  return !disallowed.some(rule => rule !== '' && pathname.startsWith(rule));
+}
 
 export function extractLinks(html, baseUrl) {
   const links = new Set();
@@ -55,8 +130,19 @@ export function extractLinks(html, baseUrl) {
   return Array.from(links);
 }
 
-export async function crawlSite(siteUrl, siteId = 1) {
+export async function crawlSite(siteUrl, explicitSiteId = null) {
   try {
+    const parsedUrl = new URL(siteUrl);
+
+    if (isDomainBlocked(parsedUrl.hostname)) {
+      return { success: false, url: siteUrl, error: 'Bu domain admin panelinden yasaklanmış', links: [] };
+    }
+
+    const disallowed = await getDisallowedPaths(parsedUrl.origin);
+    if (!isPathAllowed(parsedUrl.pathname, disallowed)) {
+      return { success: false, url: siteUrl, error: 'robots.txt tarafından engellendi', links: [] };
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
@@ -70,7 +156,7 @@ export async function crawlSite(siteUrl, siteId = 1) {
     });
     clearTimeout(timeoutId);
 
-    if (!response.ok) throw new Error(HTTP );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const html = await response.text();
 
     // HTML Temizleme ve Başlık Çıkarma
@@ -97,13 +183,24 @@ export async function crawlSite(siteUrl, siteId = 1) {
     // Sayfa içi bağlantıları topla (Link Discovery)
     const discoveredLinks = extractLinks(html, siteUrl);
 
-    // Veritabanına kaydet
+    // Güvenlik: bilinen zararlı adres veya yüksek spam puanlı sayfa indekse girmez
+    if (checkThreat(siteUrl)) {
+      return { success: false, url: siteUrl, error: 'Bilinen zararlı adres (tehdit listesi)', links: [] };
+    }
+    const spam = assessSpam({ url: siteUrl, title, snippet: description, authorityScore: 0 });
+    if (spam.score >= SPAM_DROP_THRESHOLD) {
+      return { success: false, url: siteUrl, error: 'Spam olarak değerlendirildi: ' + spam.reasons.join(', '), links: [] };
+    }
+
+    // Veritabanına kaydet — site_id her zaman gerçek hostname'e göre çözülür
+    const resolvedSiteId = explicitSiteId || getOrCreateSiteId(parsedUrl.hostname);
+
     const stmt = db.prepare(`
       INSERT OR REPLACE INTO pages (site_id, title, url, snippet, content, indexed_at)
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
 
-    stmt.run(siteId || 1, title, siteUrl, snippet, cleanContent);
+    stmt.run(resolvedSiteId, title, siteUrl, snippet, cleanContent);
 
     return {
       success: true,
