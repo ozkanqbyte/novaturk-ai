@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { sound } from '../services/soundService';
 import { downloadImage } from './ImagesPanel';
+import { copyText } from '../services/clipboardService';
 
 export default function ImageDetailModal({
   isOpen,
@@ -20,6 +21,7 @@ export default function ImageDetailModal({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [downloadState, setDownloadState] = useState('');
 
   // Aktif görselin indexi
   const currentIndex = images.findIndex(img => (img.id && img.id === image?.id) || img.thumb === image?.thumb || img.url === image?.url);
@@ -77,17 +79,20 @@ export default function ImageDetailModal({
   const resolutionText = image.width && image.height ? `${image.width} × ${image.height}` : (image.dimensions || 'HD Çözünürlük');
 
   // Bağlantıyı kopyala
-  const handleCopy = () => {
+  const handleCopy = async () => {
     sound.playClick();
-    navigator.clipboard.writeText(activeSrc);
-    setCopied(true);
+    const ok = await copyText(activeSrc);
+    setCopied(ok);
     setTimeout(() => setCopied(false), 2000);
   };
 
   // İndir
-  const handleDownload = () => {
+  const handleDownload = async () => {
     sound.playClick();
-    downloadImage({ ...image, fullImage: activeSrc, title: displayTitle });
+    setDownloadState('İndiriliyor…');
+    const ok = await downloadImage({ ...image, fullImage: activeSrc, title: displayTitle });
+    setDownloadState(ok ? '✓ İndirildi' : 'İndirilemedi');
+    setTimeout(() => setDownloadState(''), 2000);
   };
 
   // Tam ekran modu toggle
@@ -168,10 +173,12 @@ export default function ImageDetailModal({
           {/* İndir */}
           <button
             onClick={handleDownload}
-            title="Görseli HD İndir"
-            className="p-2 rounded-full hover:bg-white/15 text-slate-200 transition-colors"
+            title={downloadState || "Görseli İndir"}
+            disabled={downloadState === "İndiriliyor…"}
+            className="p-2 rounded-full hover:bg-white/15 text-slate-200 transition-colors flex items-center gap-1.5 disabled:opacity-60"
           >
-            <Download className="w-4 h-4" />
+            <Download className={`w-4 h-4 ${downloadState === "İndiriliyor…" ? "animate-pulse" : ""}`} />
+            {downloadState && <span className="text-[11px] font-semibold">{downloadState}</span>}
           </button>
 
           {/* Bağlantıyı Kopyala */}
@@ -184,9 +191,9 @@ export default function ImageDetailModal({
           </button>
 
           {/* Orijinal Sayfada Aç */}
-          {image.descriptionUrl || image.url ? (
+          {image.descriptionUrl || image.sourceUrl || image.url ? (
             <a
-              href={image.descriptionUrl || image.url}
+              href={image.descriptionUrl || image.sourceUrl || image.url}
               target="_blank"
               rel="noopener noreferrer"
               title="Orijinal Kaynak Sayfasında Aç"

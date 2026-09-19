@@ -3,20 +3,36 @@ import { Image as ImageIcon, Download, Copy, ExternalLink, Maximize2, Link2, Loa
 import { API_BASE } from '../services/searchService';
 import { sound } from '../services/soundService';
 import TimeRangeChips from './TimeRangeChips';
+import { copyText } from '../services/clipboardService';
 
 const SIZE_OPTS = [['', 'Tüm boyutlar'], ['Large', 'Büyük'], ['Medium', 'Orta'], ['Small', 'Küçük'], ['Wallpaper', 'Duvar kağıdı']];
 const TYPE_OPTS = [['', 'Tüm türler'], ['photo', 'Fotoğraf'], ['clipart', 'Çizim'], ['gif', 'GIF'], ['transparent', 'Şeffaf']];
 const LAYOUT_OPTS = [['', 'Tüm yönler'], ['Wide', 'Yatay'], ['Tall', 'Dikey'], ['Square', 'Kare']];
 
-export function downloadImage(img) {
+// Görseli sunucu üzerinden indirir (CORS engeli olmaz). Başarılıysa true döner.
+export async function downloadImage(img) {
   const src = img.fullImage || img.url || img.thumb;
-  if (!src) return;
-  const a = document.createElement('a');
-  a.href = `${API_BASE}/api/download-image?url=${encodeURIComponent(src)}&name=${encodeURIComponent((img.title || 'novaturk-gorsel').slice(0, 60))}`;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  if (!src) return false;
+  const name = (img.title || 'novaturk-gorsel').slice(0, 60);
+  const endpoint = `${API_BASE}/api/download-image?url=${encodeURIComponent(src)}&name=${encodeURIComponent(name)}`;
+  try {
+    const res = await fetch(endpoint);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const disposition = res.headers.get('content-disposition') || '';
+    const fileName = disposition.match(/filename="([^"]+)"/)?.[1] || 'novaturk-gorsel.jpg';
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function FilterSelect({ value, onChange, options, label, isDark }) {
@@ -34,9 +50,8 @@ function FilterSelect({ value, onChange, options, label, isDark }) {
   );
 }
 
-function ContextMenu({ menu, onClose, onOpen, isDark }) {
+function ContextMenu({ menu, onClose, onOpen, notify, isDark }) {
   const ref = useRef(null);
-  const [copied, setCopied] = useState(false);
   const img = menu.img;
   const src = img.fullImage || img.url || img.thumb;
 
@@ -57,21 +72,28 @@ function ContextMenu({ menu, onClose, onOpen, isDark }) {
 
   // Ekran dışına taşmasın
   const width = 236;
-  const height = 250;
+  const height = 290;
   const left = Math.min(menu.x, window.innerWidth - width - 8);
   const top = Math.min(menu.y, window.innerHeight - height - 8);
 
   const items = [
     { icon: Maximize2, label: 'Büyüt', run: () => onOpen(img) },
-    { icon: Download, label: 'Görseli indir', run: () => downloadImage(img) },
     {
-      icon: copied ? Check : Link2, label: copied ? 'Kopyalandı' : 'Görsel adresini kopyala', keepOpen: true,
+      icon: Download, label: 'Görseli indir',
       run: async () => {
-        try { await navigator.clipboard.writeText(src); setCopied(true); setTimeout(onClose, 700); } catch { onClose(); }
+        notify('İndiriliyor…', 10000);
+        notify((await downloadImage(img)) ? '✓ Görsel indirildi' : 'İndirilemedi — yeni sekmede açıp kaydedin');
       }
     },
+    {
+      icon: Link2, label: 'Görsel adresini kopyala',
+      run: async () => notify((await copyText(src)) ? '✓ Görsel adresi kopyalandı' : 'Kopyalanamadı')
+    },
     { icon: ExternalLink, label: 'Görseli yeni sekmede aç', run: () => window.open(src, '_blank', 'noopener,noreferrer') },
-    ...(img.sourceUrl ? [{ icon: Copy, label: `Kaynak sayfa (${img.source || 'site'})`, run: () => window.open(img.sourceUrl, '_blank', 'noopener,noreferrer') }] : [])
+    ...(img.sourceUrl ? [
+      { icon: Copy, label: 'Kaynak sayfanın adresini kopyala', run: async () => notify((await copyText(img.sourceUrl)) ? '✓ Kaynak adresi kopyalandı' : 'Kopyalanamadı') },
+      { icon: ExternalLink, label: `Kaynak sayfayı aç (${img.source || 'site'})`, run: () => window.open(img.sourceUrl, '_blank', 'noopener,noreferrer') }
+    ] : [])
   ];
 
   return (
@@ -86,11 +108,11 @@ function ContextMenu({ menu, onClose, onOpen, isDark }) {
       }`}
     >
       <div className="px-3 py-1.5 text-[10px] opacity-50 truncate">{img.title}</div>
-      {items.map(({ icon: Icon, label, run, keepOpen }) => (
+      {items.map(({ icon: Icon, label, run }) => (
         <button
           key={label}
           role="menuitem"
-          onClick={() => { sound.playClick(); run(); if (!keepOpen) onClose(); }}
+          onClick={() => { sound.playClick(); onClose(); run(); }}
           className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs text-left transition-colors ${
             isDark ? 'hover:bg-white/10' : 'hover:bg-black/5'
           }`}
@@ -114,6 +136,13 @@ export default function ImagesPanel({ query, initial = [], isDark, onOpen }) {
   const [error, setError] = useState('');
   const [exhausted, setExhausted] = useState(false);
   const [menu, setMenu] = useState(null);
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef(null);
+  const notify = useCallback((message, ms = 2200) => {
+    clearTimeout(toastTimer.current);
+    setToast(message);
+    toastTimer.current = setTimeout(() => setToast(''), ms);
+  }, []);
   const abortRef = useRef(null);
   const pressTimer = useRef(null);
   const filtersDirty = time !== 'all' || size || type || layout;
@@ -251,7 +280,12 @@ export default function ImagesPanel({ query, initial = [], isDark, onOpen }) {
               <button
                 aria-label="Görseli indir"
                 title="İndir"
-                onClick={(e) => { e.stopPropagation(); sound.playClick(); downloadImage(img); }}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  sound.playClick();
+                  notify('İndiriliyor…', 10000);
+                  notify((await downloadImage(img)) ? '✓ Görsel indirildi' : 'İndirilemedi — yeni sekmede açıp kaydedin');
+                }}
                 className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/20 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-sky-500/70"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -276,7 +310,13 @@ export default function ImagesPanel({ query, initial = [], isDark, onOpen }) {
         ) : null}
       </div>
 
-      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} onOpen={onOpen} isDark={isDark} />}
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} onOpen={onOpen} notify={notify} isDark={isDark} />}
+
+      {toast && (
+        <div role="status" className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[90] px-4 py-2 rounded-full text-xs font-semibold bg-slate-900/95 text-white border border-white/15 shadow-2xl backdrop-blur-xl">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
